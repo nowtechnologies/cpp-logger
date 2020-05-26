@@ -223,7 +223,6 @@ namespace nowtech {
     /// @param aProgressFlag address of flag to be set on transmission end.
     virtual void transmit(const char * const aBuffer, LogSizeType const aLength, std::atomic<bool> *aProgressFlag) noexcept override {
       mOutput.write(aBuffer, aLength);
-      mOutput.flush();
       aProgressFlag->store(false);
     }
 

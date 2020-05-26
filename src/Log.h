@@ -140,17 +140,6 @@ namespace nowtech {
     /// in the form -=- Registered task: taskname (1) -=-
     bool allowRegistrationLog = true;
 
-    /// If true, use of Log << something << to << log << Log::end; calls will
-    /// be allowed from registered threads (but NOT from ISR).
-    /// This requires pre-allocating 256 * chunkSize bytes of memory, but lets
-    /// reduce the stack sizes dramatically in contrast to the variadic template calls.
-    bool allowShiftChainingCalls = true;
-
-    /// If false, the variadic template calls (send... and sendNoHeader...) will be placed,
-    /// but return immediately without doing anything at all. This is useful to remind
-    /// the developer working with limited stack to use the shift chain calls.
-    bool allowVariadicTemplatesWork = true;
-
     /// If true, logging will work from ISR.
     bool logFromIsr = false;
 
@@ -433,14 +422,11 @@ namespace nowtech {
       return *this;
     }
 
-    Chunk& operator=(Chunk&& aChunk) noexcept;
-
     void invalidate() noexcept {
       mIndex = 1u;
       mChunk[0] = static_cast<char>(cInvalidTaskId);
     }
 
-    /// defined in .cpp to allow stub.
     void push(char const mChar) noexcept;
 
     void flush() noexcept {
@@ -684,91 +670,100 @@ namespace nowtech {
     /// Finishes the << operator chain just started
     LogShiftChainHelper operator<<(LogShiftChainMarker const aMarker) noexcept;
 
-    /// If aTopic is registered, calls the normal send to process the arguments
-    template<typename... Args>
-    static void send(LogTopicType const aTopic, Args... args) noexcept {
-      if(sInstance->mConfig.allowVariadicTemplatesWork) {
-        char chunk[sInstance->mChunkSize];
-        Chunk appender = sInstance->startSend(static_cast<char*>(chunk), Chunk::cInvalidTaskId, aTopic);
-        if(appender.isValid()) {
-          sInstance->doSend(appender, args...);
-        }
-        else { // nothing to do
-        }
+    template<typename T>
+    static void send(LogTopicType const aTopic, LogFormat const &aFormat, T const aValue) noexcept {
+      char chunk[sInstance->mChunkSize];
+      Chunk appender = sInstance->startSend(static_cast<char*>(chunk), Chunk::cInvalidTaskId, aTopic);
+      if(appender.isValid()) {
+        sInstance->append(appender, aFormat, aValue);
+        appender.flush();
       }
       else { // nothing to do
       }
     }
 
-    /// Sends any number of parameters which may be:
-    /// - char
-    /// - char string
-    /// - int8_t
-    /// - int16_t
-    /// - int32_t
-    /// - int64_t
-    /// - uint8_t
-    /// - uint16_t
-    /// - uint32_t
-    /// - uint64_t
-    /// - bool
-    /// - float
-    /// - double
-    /// - the integer and floating point types preceded by a possible LogFormat
-    /// object for formatting.
-    /// Other types are not sent, but signed by -=unknown=-
-    /// Please avoid sending #, @ or newline characters. Sends newline
-    /// automatically in the end.
-    template<typename... Args>
-    static void send(Args... args) noexcept {
-      if(sInstance->mConfig.allowVariadicTemplatesWork) {
-        char chunk[sInstance->mChunkSize];
-        Chunk appender = sInstance->startSend(static_cast<char*>(chunk), Chunk::cInvalidTaskId);
-        if(appender.isValid()) {
-          sInstance->doSend(appender, args...);
-        }
-        else { // nothing to do
-        }
+    template<typename T>
+    static void send(LogFormat const &aFormat, T const aValue) noexcept {
+      char chunk[sInstance->mChunkSize];
+      Chunk appender = sInstance->startSend(static_cast<char*>(chunk), Chunk::cInvalidTaskId);
+      if(appender.isValid()) {
+        sInstance->append(appender, aFormat, aValue);
+        appender.flush();
       }
       else { // nothing to do
       }
     }
 
-    /// Similar to send but does not emit any preconfigured header.
-    template<typename... Args>
-    static void sendNoHeader(LogTopicType aTopic, Args... args) noexcept {
-      if(sInstance->mConfig.allowVariadicTemplatesWork) {
-        char chunk[sInstance->mChunkSize];
-        Chunk appender = sInstance->startSendNoHeader(static_cast<char*>(chunk), Chunk::cInvalidTaskId, aTopic);
-        if(appender.isValid()) {
-          sInstance->doSend(appender, args...);
-        }
-        else { // nothing to do
-        }
+    template<typename T>
+    static void send(LogTopicType const aTopic, T const aValue) noexcept {
+      char chunk[sInstance->mChunkSize];
+      Chunk appender = sInstance->startSend(static_cast<char*>(chunk), Chunk::cInvalidTaskId, aTopic);
+      if(appender.isValid()) {
+        sInstance->append(appender, aValue);
+        appender.flush();
       }
       else { // nothing to do
       }
     }
 
-    /// Similar to send but does not emit any preconfigured header.
-    template<typename... Args>
-    static void sendNoHeader(Args... args) noexcept {
-      if(sInstance->mConfig.allowVariadicTemplatesWork) {
-        char chunk[sInstance->mChunkSize];
-        Chunk appender = sInstance->startSendNoHeader(static_cast<char*>(chunk), Chunk::cInvalidTaskId);
-        if(appender.isValid()) {
-          sInstance->doSend(appender, args...);
-        }
-        else { // nothing to do
-        }
+    template<typename T>
+    static void send(T const aValue) noexcept {
+      char chunk[sInstance->mChunkSize];
+      Chunk appender = sInstance->startSend(static_cast<char*>(chunk), Chunk::cInvalidTaskId);
+      if(appender.isValid()) {
+        sInstance->append(appender, aValue);
+        appender.flush();
       }
       else { // nothing to do
       }
     }
 
-    /// Sends the trailing newline character.
-    void finishSend(Chunk &aChunk) noexcept {
-      aChunk.flush();
+    template<typename T>
+    static void sendNoHeader(LogTopicType const aTopic, LogFormat const &aFormat, T const aValue) noexcept {
+      char chunk[sInstance->mChunkSize];
+      Chunk appender = sInstance->startSendNoHeader(static_cast<char*>(chunk), Chunk::cInvalidTaskId, aTopic);
+      if(appender.isValid()) {
+        sInstance->append(appender, aFormat, aValue);
+        appender.flush();
+      }
+      else { // nothing to do
+      }
+    }
+
+    template<typename T>
+    static void sendNoHeader(LogFormat const &aFormat, T const aValue) noexcept {
+      char chunk[sInstance->mChunkSize];
+      Chunk appender = sInstance->startSendNoHeader(static_cast<char*>(chunk), Chunk::cInvalidTaskId);
+      if(appender.isValid()) {
+        sInstance->append(appender, aFormat, aValue);
+        appender.flush();
+      }
+      else { // nothing to do
+      }
+    }
+
+    template<typename T>
+    static void sendNoHeader(LogTopicType const aTopic, T const aValue) noexcept {
+      char chunk[sInstance->mChunkSize];
+      Chunk appender = sInstance->startSendNoHeader(static_cast<char*>(chunk), Chunk::cInvalidTaskId, aTopic);
+      if(appender.isValid()) {
+        sInstance->append(appender, aValue);
+        appender.flush();
+      }
+      else { // nothing to do
+      }
+    }
+
+    template<typename T>
+    static void sendNoHeader(T const aValue) noexcept {
+      char chunk[sInstance->mChunkSize];
+      Chunk appender = sInstance->startSendNoHeader(static_cast<char*>(chunk), Chunk::cInvalidTaskId);
+      if(appender.isValid()) {
+        sInstance->append(appender, aValue);
+        appender.flush();
+      }
+      else { // nothing to do
+      }
     }
 
 private:
@@ -776,34 +771,6 @@ private:
 
     /// Defined in .cpp to allow stub
     TaskIdType getCurrentTaskId() const noexcept;
-
-    /// Building block for variadic template based message construction.
-    template<typename T>
-    void doSend(Chunk &aChunk, T const aValue) noexcept {
-      append(aChunk, aValue);
-      finishSend(aChunk);
-    }
-
-    /// Building block for variadic template based message construction.
-    template<typename T>
-    void doSend(Chunk &aChunk, LogFormat const & aFormat, T const aValue) noexcept {
-      append(aChunk, aFormat, aValue);
-      finishSend(aChunk);
-    }
-
-    /// Building block for variadic template based message construction.
-    template<typename T, typename... Args>
-    void doSend(Chunk &aChunk, T const aValue, Args... aArgs) noexcept {
-      append(aChunk, aValue);
-      doSend(aChunk, aArgs...);
-    }
-
-    /// Building block for variadic template based message construction.
-    template<typename = LogFormat, typename T, typename... Args>
-    void doSend(Chunk &aChunk, LogFormat const & aFormat, T const aValue, Args... aArgs) noexcept {
-      append(aChunk, aFormat, aValue);
-      doSend(aChunk, aArgs...);
-    }
 
     Chunk startSend(char * const aChunkBuffer, TaskIdType const aTaskId) noexcept;
     Chunk startSend(char * const aChunkBuffer, TaskIdType const aTaskId, LogTopicType aTopic) noexcept;
@@ -822,7 +789,7 @@ private:
       append(aChunk, static_cast<int32_t>(aValue), static_cast<int32_t>(aFormat.base), aFormat.fill);
     }
 
-    void yappend(Chunk &aChunk, LogFormat const & aFormat, int32_t const aValue) noexcept {
+    void append(Chunk &aChunk, LogFormat const & aFormat, int32_t const aValue) noexcept {
       append(aChunk, aValue, static_cast<int32_t>(aFormat.base), aFormat.fill);
     }
 

@@ -6,7 +6,7 @@ with different options for tailoring the logger behavior for smaller
 or larger MCUs. 
 
 There are two log call flavours:
-  - The all-purpose function call-like solution, but it heavily relies on variadic templates, stack usage may be in the order of kilobytes for many passed parameters. **This holds for all the tasks using the log system.** For low stack usage, avoid many parameters. For small compiled size, avoid many parameter footprints (i.e. avoid many template instantiations).
+  - The function call-like solution with only one value to print per line. For small compiled size, avoid many parameter footprints (i.e. avoid many template instantiations).
   - The `std::ostream`-like solution, which uses minimal stack. Discarding headers is interesting only if there are many simple homogeneous calls, or the available bandwidth is limited.
 
 The library reserves some buffers and a queue during construction, and makes
@@ -200,8 +200,6 @@ Field | Possible values | Default value | Effect
 cD*n* |constant         |LogFormat(10, *n*)|Used for n-digit decimal output, where n can be 2-8.
 cX*n* |constant         |LogFormat(16, *n*)|Used for n-digit hexadecimal output, where *n* can be 2, 4, 6 or 8.
 allowRegistrationLog|bool|true          |If true, task registration will be sent to the output in the form -=- Registered task: taskname (1) -=- **Note**, systems with limited stack space and using std::ostream-like calls need to disable this, because the output is created using the stack-hungry variadic template call.
-allowShiftChainingCalls|bool|true       |True means reserving a buffer of 256 * chunkSize characters to let the `std::ostream`-like calls work. Setting it false will let such calls compile, but they won't do anything.
-allowVariadicTemplatesWork|bool|true    |If false, the variadic template calls (send... and sendNoHeader...) will be placed, but return immediately without doing anything at all. This is useful to remind the developer working with limited stack to use the shift chain calls.
 `logFromIsr`|bool       |false          |If false, log calls from ISR are discarded. If true, logging from ISR works. However, in this mode the message may be truncated if the actual free space in the queue is too small.
 `chunkSize`|uint32_t    |8              |Total message chunk size to use in queue and buffers. The net capacity is one less, because the task ID takes a character. Messages are not handled as a string of characters, but as a series of chunks. '\\r' signs the end of a message.
 `queueLength`|uint32_t  |64             |Length of a queue in chunks. Increasing this value decreases the probability of message truncation when the queue stores more chunks.
@@ -229,15 +227,19 @@ allowVariadicTemplatesWork|bool|true    |If false, the variadic template calls (
 
 ### Invocation
 
-#### All-purpose solution
+#### Function call-like solution
 
-The API has for static method templates, which lets the log system be
+The API has 8 static method templates, which lets the log system be
 called from any place in the application:
 
-  - `static void send(LogTopicType aTopic, Args... args) noexcept;`
-  - `static void send(Args... args) noexcept;`
-  - `static void sendNoHeader(LogTopicType aTopic, Args... args) noexcept;`
-  - `static void sendNoHeader(Args... args) noexcept;`
+  - `static void send(LogTopicType aTopic, LogFormat const &aFormat, T const aValue) noexcept;`
+  - `static void send(LogTopicType aTopic, T const aValue) noexcept;`
+  - `static void send(LogFormat const &aFormat, T const aValue) noexcept;`
+  - `static void send(T const aValue) noexcept;`
+  - `static void sendNoHeader(LogTopicType aTopic, LogFormat const &aFormat, T const aValue) noexcept;`
+  - `static void sendNoHeader(LogTopicType aTopic, T const aValue) noexcept;`
+  - `static void sendNoHeader(LogFormat const &aFormat, T const aValue) noexcept;`
+  - `static void sendNoHeader(T const aValue) noexcept;`
 
 The ones with the name `send` behave according to the stored configuration and the actual parameter list.
 The ones with the name `sendNoHeader` skip printing a header, if any defined in the config.
@@ -250,10 +252,9 @@ unconditionally.
 
 Examples:
 ```cpp
-Log::send(*nowtech::SomeLogTopicNamespace::system, "uint64: ", uint64, " int64: ", int64);
-Log::send("uint64: ", uint64, " int64: ", int64);
-Log::sendNoHeader(*nowtech::SomeLogTopicNamespace::system, "uint64: ", uint64, " int64: ", int64);
-Log::sendNoHeader("uint64: ", uint64, " int64: ", int64);
+Log::send(*nowtech::SomeLogTopicNamespace::system, int64);
+Log::send(uint64);
+Log::sendNoHeader(*nowtech::SomeLogTopicNamespace::system, LC::cD7, int64);
 ```
 
 #### std::ostream-like solution
@@ -344,7 +345,7 @@ LogFreertosStmHal.h    |An STM HAL UART device|yes         |An interface for ST
 LogFreertosBlocking.h  |Any blocking device|yes            |An interface for any blocking transmission device under FreeRTOS, tested with version 9.0.0. It makes use of the built-in buffering and transmits from its own thread.
 LogCmsisSwo.h          |CMSIS SWO       |not yet           |An interface for CMSIS SWO making immediate transmits from the actual thread. This comes without any buffering or concurrency support, so messages from different threads may interleave each other.
 LogFreertosCmsisSwo.h  |CMSIS SWO       |not yet           |An interface for CMSIS SWO under FreeRTOS, tested with version 9.0.0. This implementaiton is designed to put as little load on the actual thread as possible. It makes use of the built-in buffering and transmits from its own thread.
-LogStdOstream.h        |std::ostream    |not yet           |An interface for std::ostream making immediate transmits from the actual thread. This comes without any buffering or concurrency support, so messages from different threads may interleave each other.
+LogStdOstream.h        |std::ostream    |yet               |An interface for std::ostream making immediate transmits from the actual thread. This comes without any buffering or concurrency support, so messages from different threads may interleave each other.
 LogStdThreadOstream.h  |std::ostream    |yes               |An interface using STL (even for threads) and boost::lockfree::queue. Thanks to this class, this implementation is lock-free. Note, this class does not own the std::ostream and does nothing but writes to it. Opening, closing etc is responsibility of the user code. The stream should NOT throw exceptions. Note, as this interface does not know interrupts, skipping a thread registration will prevent logging from that thread. Note, this class **requires Boost** to compile.
 
 ## Compiling
@@ -402,8 +403,5 @@ extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 
 ## TODO
 
-  - Static entry point using a static variable stored in the
-    constructor. This would be the place to distinguish between stub
-    and functional versions.
   - Eliminate std::map.
   - Fix the lockup bug happening under extreme loads.

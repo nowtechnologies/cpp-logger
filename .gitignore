@@ -29,3 +29,6 @@ test-stdthreadostream
 *.exe
 *.out
 *.app
+test-stdthreadostream
+test-stdostream
+refactor.ods

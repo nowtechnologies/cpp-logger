@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "shell",
+      "label": "g++ build test-stdthreadostream",
+      "command": "/usr/bin/g++",
+      "args": ["-ggdb", "test/test-stdthreadostream.cpp", "src/Log.cpp", "src/LogUtil.cpp", "src/LogStdThreadOstream.cpp", "-I", "src/", "-lpthread",  "-o", "${workspaceFolder}/test-stdthreadostream"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": ["$gcc"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "type": "shell",
+      "label": "g++ build test-stdostream",
+      "command": "/usr/bin/g++",
+      "args": ["-ggdb", "test/test-stdostream.cpp", "src/Log.cpp", "src/LogUtil.cpp", "-I", "src/", "-lpthread",  "-o", "${workspaceFolder}/test-stdostream"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": ["$gcc"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

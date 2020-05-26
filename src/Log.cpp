@@ -24,19 +24,7 @@
 #include "Log.h"
 #include "LogUtil.h"
 
-nowtech::Chunk& nowtech::Chunk::operator=(nowtech::Chunk&& aChunk) noexcept {
-  mOsInterface = aChunk.mOsInterface;
-  mOrigin = aChunk.mOrigin;
-  mChunk = aChunk.mChunk;
-  mChunkSize = aChunk.mChunkSize;
-  mBufferBytes = aChunk.mBufferBytes;
-  mBlocks = aChunk.mBlocks;
-  mIndex = aChunk.mIndex;
-  aChunk.mOsInterface = nullptr;
-  aChunk.mOrigin = nullptr;
-  aChunk.mChunk = nullptr;
-  return *this;
-}
+#include <iostream> // TODO remove
 
 void nowtech::Chunk::push(char const mChar) noexcept {
   mChunk[mIndex] = mChar;
@@ -83,7 +71,7 @@ nowtech::Log *nowtech::Log::sInstance;
 
 nowtech::LogShiftChainHelper& nowtech::LogShiftChainHelper::operator<<(LogShiftChainMarker const) noexcept {
   if(mLog != nullptr) {
-    mLog->finishSend(mAppender);
+    mAppender.flush();
   }
   else { // nothing to do
   }
@@ -98,11 +86,7 @@ nowtech::Log::Log(LogOsInterface &aOsInterface, LogConfig const &aConfig) noexce
   sNextFreeTopic.store(cFirstFreeTopic);
   mKeepRunning.store(true);
   mOsInterface.createTransmitterThread(this, logTransmitterThreadFunction);
-  if(aConfig.allowShiftChainingCalls) {
-    mShiftChainingCallBuffers = new char[(std::numeric_limits<TaskIdType>::max() + static_cast<LogSizeType>(1u)) * mChunkSize];
-  }
-  else { // nothing to do
-  }
+  mShiftChainingCallBuffers = new char[(std::numeric_limits<TaskIdType>::max() + static_cast<LogSizeType>(1u)) * mChunkSize];
 }
 
 void nowtech::Log::doRegisterCurrentTask(char const * const aTaskName) noexcept {
@@ -118,7 +102,9 @@ void nowtech::Log::doRegisterCurrentTask(char const * const aTaskName) noexcept 
     if(found == mTaskIds.end()) {
       mTaskIds[taskHandle] = mNextTaskId;
       if(mConfig.allowRegistrationLog) {
-        send("-=- Registered task: ", mOsInterface.getThreadName(taskHandle), " (", mNextTaskId, ") -=-");
+        send("-=- Registered task: ");
+        send(mOsInterface.getThreadName(taskHandle));
+        send(mNextTaskId);
       }
       else { // nothing to do
       }
@@ -309,7 +295,7 @@ nowtech::LogShiftChainHelper nowtech::Log::operator<<(LogShiftChainMarker const)
     TaskIdType taskId = getCurrentTaskId();
     Chunk appender = startSend(mShiftChainingCallBuffers + (taskId * mChunkSize), taskId);
     if(appender.isValid()) {
-      finishSend(appender);
+      appender.flush();
     }
     else { // nothing to do
     }

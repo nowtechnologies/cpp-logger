@@ -81,14 +81,21 @@ namespace nowtech {
     virtual void push(char const * const aChunkStart, bool const) noexcept {
       LogSizeType length;
       char buffer[mChunkSize];
+      bool newLine = false;
       for(length = 0u; length < mChunkSize - 1u; ++length) {
         buffer[length] = aChunkStart[length + 1u];
-        if(aChunkStart[length + 1] == '\n') {
+        if(aChunkStart[length + 1] == '\r') {
+          newLine = true;
           ++length;
           break;
         }
       }
       mOutput.write(buffer, length);
+      if(newLine) {
+        mOutput << '\n';
+      }
+      else { // nothing to do
+      }
     }
 
     /// Does nothing.

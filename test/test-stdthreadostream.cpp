@@ -51,7 +51,7 @@ LogTopicInstance system;
  
 void delayedLog(int32_t n) {
   Log::registerCurrentTask(names[n]);
-  Log::send(*nowtech::LogTopics::system, n, ": ", 0);
+  Log::i(nowtech::LogTopics::system) << n << ": " << 0 << Log::end;
   for(int64_t i = 1; i < 13; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1 << i));
     Log::i(nowtech::LogTopics::system) << n << ". thread delay logarithm: " << LC::cX1 << i << Log::end;
@@ -64,8 +64,6 @@ int main() {
   nowtech::LogConfig logConfig;
   logConfig.taskRepresentation = nowtech::LogConfig::TaskRepresentation::cName;
   logConfig.refreshPeriod      = 200u;
- // logConfig.allowShiftChainingCalls = false;
-  logConfig.allowVariadicTemplatesWork = false;
   nowtech::LogStdThreadOstream osInterface(std::cout, logConfig);
   nowtech::Log log(osInterface, logConfig);
   Log::registerTopic(nowtech::LogTopics::system, "system");
@@ -75,11 +73,6 @@ int main() {
 
   Log::registerCurrentTask("main");
 
-  Log::send(*nowtech::LogTopics::system, "uint64: ", uint64, " int64: ", int64);
-  Log::sendNoHeader(*nowtech::LogTopics::system, "uint64: ", uint64, " int64: ", int64);
-  Log::send("uint64: ", uint64, " int64: ", int64);
-  Log::sendNoHeader("uint64: ", uint64, " int64: ", int64);
-  
   Log::i(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::n(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::i() << "uint64: " << uint64 << " int64: " << int64 << Log::end;

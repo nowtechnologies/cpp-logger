@@ -24,7 +24,7 @@
 #include "Log.h"
 #include "LogUtil.h"
 
-void nowtech::Chunk::push(char const mChar) noexcept {
+void nowtech::push(char const mChar) noexcept {
 }
 
 constexpr nowtech::LogFormat nowtech::LogConfig::cDefault;
@@ -54,7 +54,7 @@ void nowtech::Log::transmitterThreadFunction() noexcept
 }
 
 nowtech::Log::Log(LogOsInterface &aOsInterface, LogConfig const &aConfig) noexcept
-  : mOsInterface(aOsInterface)
+  : tInterface(aOsInterface)
   , mConfig(aConfig)
   , mChunkSize(aConfig.mChunkSize) {
   sInstance = this;
@@ -64,7 +64,7 @@ void nowtech::Log::doRegisterCurrentTask() noexcept {
 }
 
 nowtech::TaskIdType nowtech::Log::getCurrentTaskId() const noexcept {
-  return Chunk::cInvalidTaskId;
+  return cInvalidTaskId;
 }
 
 // In the stub this will be implemented to return constant false

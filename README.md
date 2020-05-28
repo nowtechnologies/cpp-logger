@@ -232,14 +232,14 @@ allowRegistrationLog|bool|true          |If true, task registration will be sent
 The API has 8 static method templates, which lets the log system be
 called from any place in the application:
 
-  - `static void send(LogTopicType aTopic, LogFormat const &aFormat, T const aValue) noexcept;`
-  - `static void send(LogTopicType aTopic, T const aValue) noexcept;`
-  - `static void send(LogFormat const &aFormat, T const aValue) noexcept;`
-  - `static void send(T const aValue) noexcept;`
-  - `static void sendNoHeader(LogTopicType aTopic, LogFormat const &aFormat, T const aValue) noexcept;`
-  - `static void sendNoHeader(LogTopicType aTopic, T const aValue) noexcept;`
-  - `static void sendNoHeader(LogFormat const &aFormat, T const aValue) noexcept;`
-  - `static void sendNoHeader(T const aValue) noexcept;`
+  - `static void send(LogTopicType aTopic, LogFormat const &aFormat, tValueType const aValue) noexcept;`
+  - `static void send(LogTopicType aTopic, tValueType const aValue) noexcept;`
+  - `static void send(LogFormat const &aFormat, tValueType const aValue) noexcept;`
+  - `static void send(tValueType const aValue) noexcept;`
+  - `static void sendNoHeader(LogTopicType aTopic, LogFormat const &aFormat, tValueType const aValue) noexcept;`
+  - `static void sendNoHeader(LogTopicType aTopic, tValueType const aValue) noexcept;`
+  - `static void sendNoHeader(LogFormat const &aFormat, tValueType const aValue) noexcept;`
+  - `static void sendNoHeader(tValueType const aValue) noexcept;`
 
 The ones with the name `send` behave according to the stored configuration and the actual parameter list.
 The ones with the name `sendNoHeader` skip printing a header, if any defined in the config.

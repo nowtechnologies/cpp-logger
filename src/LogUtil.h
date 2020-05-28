@@ -32,7 +32,7 @@ namespace nowtech {
   /// Auxiliary class, not part of the Log API.
   class CircularBuffer final : public BanCopyMove {
   private:
-    LogOsInterface &mOsInterface;
+    LogOsInterface &tInterface;
 
     /// Counted in chunks
     LogSizeType const mBufferLength;
@@ -47,13 +47,13 @@ namespace nowtech {
 
   public:
     CircularBuffer(LogOsInterface &aOsInterface, LogSizeType const aBufferLength, LogSizeType const aChunkSize) noexcept
-      : mOsInterface(aOsInterface)
+      : tInterface(aOsInterface)
       , mBufferLength(aBufferLength)
       , mChunkSize(aChunkSize)
       , mBuffer(new char[aBufferLength * aChunkSize])
-      , mStuffStart(&aOsInterface, mBuffer, aBufferLength, Chunk::cInvalidTaskId)
-      , mStuffEnd(&aOsInterface, mBuffer, aBufferLength, Chunk::cInvalidTaskId)
-      , mFound(&aOsInterface, mBuffer, aBufferLength, Chunk::cInvalidTaskId) {
+      , mStuffStart(&aOsInterface, mBuffer, aBufferLength, cInvalidTaskId)
+      , mStuffEnd(&aOsInterface, mBuffer, aBufferLength, cInvalidTaskId)
+      , mFound(&aOsInterface, mBuffer, aBufferLength, cInvalidTaskId) {
     }
 
     /// Not intended to be destroyed
@@ -111,7 +111,7 @@ namespace nowtech {
   /// Auxiliary class, not part of the Log API.
   class TransmitBuffers final : public BanCopyMove {
   private:
-    LogOsInterface &mOsInterface;
+    LogOsInterface &tInterface;
 
     /// counted in chunks
     LogSizeType const mBufferLength;
@@ -124,21 +124,21 @@ namespace nowtech {
     LogSizeType mIndex[2] = {
       0,0
     };
-    uint8_t mActiveTaskId = Chunk::cInvalidTaskId;
+    uint8_t mActiveTaskId = cInvalidTaskId;
     bool mWasTerminalChunk = false;
     std::atomic<bool> mTransmitInProgress;
     std::atomic<bool> mRefreshNeeded;
 
   public:
     TransmitBuffers(LogOsInterface &aOsInterface, LogSizeType const aBufferLength, LogSizeType const aChunkSize) noexcept
-      : mOsInterface(aOsInterface)
+      : tInterface(aOsInterface)
       , mBufferLength(aBufferLength)
       , mChunkSize(aChunkSize) {
       mBuffers[0] = new char[aBufferLength * (aChunkSize - 1)];
       mBuffers[1] = new char[aBufferLength * (aChunkSize - 1)];
       mTransmitInProgress.store(false);
       mRefreshNeeded.store(false);
-      mOsInterface.startRefreshTimer(&mRefreshNeeded);
+      tInterface::startRefreshTimer(&mRefreshNeeded);
     }
 
     ~TransmitBuffers() noexcept {
@@ -147,7 +147,7 @@ namespace nowtech {
     }
 
     bool hasActiveTask() const noexcept {
-      return mActiveTaskId != Chunk::cInvalidTaskId;
+      return mActiveTaskId != cInvalidTaskId;
     }
 
     TaskIdType getActiveTaskId() const noexcept {

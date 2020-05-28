@@ -28,12 +28,12 @@ nowtech::Chunk const &nowtech::CircularBuffer::inspect(TaskIdType const aTaskId)
     ++mFound;
   }
   if(mInspectedCount == mCount) {
-    nowtech::Chunk source(&mOsInterface, mBuffer, mBufferLength);
-    nowtech::Chunk destination(&mOsInterface, mBuffer, mBufferLength);
+    nowtech::Chunk source(&tInterface, mBuffer, mBufferLength);
+    nowtech::Chunk destination(&tInterface, mBuffer, mBufferLength);
     source = mStuffStart.getData();
     destination = mStuffStart.getData();
     while(source.getData() != mStuffEnd.getData()) {
-      if(destination.getTaskId() != nowtech::Chunk::cInvalidTaskId) {
+      if(destination.getTaskId() != nowtech::cInvalidTaskId) {
         if(source.getData() == destination.getData()) {
           ++source;
         }
@@ -42,7 +42,7 @@ nowtech::Chunk const &nowtech::CircularBuffer::inspect(TaskIdType const aTaskId)
         ++destination;
       }
       else {
-        if(source.getTaskId() == nowtech::Chunk::cInvalidTaskId) {
+        if(source.getTaskId() == nowtech::cInvalidTaskId) {
           ++source;
         }
         else {
@@ -66,7 +66,7 @@ nowtech::Chunk const &nowtech::CircularBuffer::inspect(TaskIdType const aTaskId)
 }
 
 nowtech::TransmitBuffers &nowtech::TransmitBuffers::operator<<(nowtech::Chunk const &aChunk) noexcept {
-  if(aChunk.getTaskId() != nowtech::Chunk::cInvalidTaskId) {
+  if(aChunk.getTaskId() != nowtech::cInvalidTaskId) {
     LogSizeType i = 1;
     char const * const origin = aChunk.getData();
     mWasTerminalChunk = false;
@@ -74,9 +74,9 @@ nowtech::TransmitBuffers &nowtech::TransmitBuffers::operator<<(nowtech::Chunk co
     LogSizeType &index = mIndex[mBufferToWrite];
     while(!mWasTerminalChunk && i < mChunkSize) {
       buffer[index] = origin[i];
-      if (origin[i] == Chunk::cEndOfMessage) {
+      if (origin[i] == cEndOfMessage) {
         mWasTerminalChunk = true;
-        buffer[index] = Chunk::cEndOfLine;
+        buffer[index] = cEndOfLine;
       }
       else {
         mWasTerminalChunk = false;
@@ -86,7 +86,7 @@ nowtech::TransmitBuffers &nowtech::TransmitBuffers::operator<<(nowtech::Chunk co
     }
     ++mChunkCount[mBufferToWrite];
     if(mWasTerminalChunk) {
-      mActiveTaskId = nowtech::Chunk::cInvalidTaskId;
+      mActiveTaskId = nowtech::cInvalidTaskId;
     }
     else {
       mActiveTaskId = aChunk.getTaskId();
@@ -102,7 +102,7 @@ void nowtech::TransmitBuffers::transmitIfNeeded() noexcept {
   else {
     if(mChunkCount[mBufferToWrite] == mBufferLength) {
       while(mTransmitInProgress.load() == true) {
-        mOsInterface.pause();
+        tInterface::pause();
       }
       mRefreshNeeded.store(true);
     }
@@ -110,12 +110,12 @@ void nowtech::TransmitBuffers::transmitIfNeeded() noexcept {
     }
     if(mTransmitInProgress.load() == false && mRefreshNeeded.load() == true) {
       mTransmitInProgress.store(true);
-      mOsInterface.transmit(mBuffers[mBufferToWrite], mIndex[mBufferToWrite], &mTransmitInProgress);
+      tInterface::transmit(mBuffers[mBufferToWrite], mIndex[mBufferToWrite], &mTransmitInProgress);
       mBufferToWrite = 1 - mBufferToWrite;
       mIndex[mBufferToWrite] = 0;
       mChunkCount[mBufferToWrite] = 0;
       mRefreshNeeded.store(false);
-      mOsInterface.startRefreshTimer(&mRefreshNeeded);
+      tInterface::startRefreshTimer(&mRefreshNeeded);
     }
     else { // nothing to do
     }

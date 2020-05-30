@@ -102,7 +102,7 @@ void nowtech::TransmitBuffers::transmitIfNeeded() noexcept {
   else {
     if(mChunkCount[mBufferToWrite] == mBufferLength) {
       while(mTransmitInProgress.load() == true) {
-        tInterface::pause();
+        tInterface::pause(); // TODO elimninate
       }
       mRefreshNeeded.store(true);
     }

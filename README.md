@@ -260,16 +260,10 @@ Log::sendNoHeader(*nowtech::SomeLogTopicNamespace::system, LC::cD7, int64);
 #### std::ostream-like solution
 
 The following entry points are available:
-  - Singleton access:
-    - `static LogShiftChainHelper i() noexcept;` -- prints header, logs unconditionally
-    - `static LogShiftChainHelper i(LogTopicType const aTopic) noexcept;` -- logs with header if the topic is enabled
-    - `static LogShiftChainHelper n() noexcept;` -- doesn't print header, logs unconditionally
-    - `static LogShiftChainHelper n(LogTopicType const aTopic) noexcept;` -- logs without header if the topic is enabled
-  - Member access (no header surpression possible):
-    - `LogShiftChainHelper operator<<(ArgumentType const aValue) noexcept;` -- not recommended, the singleton version will avoid unnecessary template instantiations
-    - `LogShiftChainHelper operator<<(LogTopicType const aTopic) noexcept;` -- logs with header if the topic is enabled
-    - `LogShiftChainHelper operator<<(LogFormat const &aFormat) noexcept;` -- logs with header unconditionally
-    - `LogShiftChainHelper operator<<(LogShiftChainMarker const aMarker) noexcept;` -- just for fun, does nothing
+  - `static LogShiftChainHelper i() noexcept;` -- prints header, logs unconditionally
+  - `static LogShiftChainHelper i(LogTopicType const aTopic) noexcept;` -- logs with header if the topic is enabled
+  - `static LogShiftChainHelper n() noexcept;` -- doesn't print header, logs unconditionally
+  - `static LogShiftChainHelper n(LogTopicType const aTopic) noexcept;` -- logs without header if the topic is enabled
 
 The class `LogTopicInstance` has an overloaded cast operator to `LogTopicType` so it can be passed directly. Due to operator overloading, static access is not available, so the Log instance has to be required:
 
@@ -321,7 +315,7 @@ Type        |Printed value          |If it can be preceded by a LogFormat parame
 `double`    |formatted numeric value in exponential form|yes
 anything else, like pure `int`|`-=unknown=-`|no
 
-The logger was initially designed for 32-bit embedded environment with possible few binary-to-printed
+TODO rewrite The logger was initially designed for 32-bit embedded environment with possible few binary-to-printed
 converter template function instantiation. From 8 to 32 bit numbers only the 32-bit versions will be created.
 Using 64-bit numbers makes the compiler create the 64-bit version(s) as well, depending on the signedness
 of the numbers to log.

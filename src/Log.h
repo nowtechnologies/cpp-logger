@@ -31,7 +31,7 @@
 #include <cmath>
 #include <map>
 
-namespace nowtech {
+namespace nowtech::log {
 
 namespace NumericSystem {
   static constexpr uint8_t cBinary      =  2u;
@@ -39,16 +39,19 @@ namespace NumericSystem {
   static constexpr uint8_t cHexadecimal = 16u;
 }
 
-/// Type for task ID in map.
+enum class Exception : uint8_t {
+  cOutOfTaskIds = 0u,
+  cCount        = 1u
+};
+
 typedef uint8_t TaskIdType;
+typedef int8_t LogTopicType;
 
-typedef uint8_t LogTopicType;
-
-template<typename tNewDelete, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tAppendStackBufferLength>
+template<typename tAppInterface, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>
 class Log;
 
 class LogTopicInstance final {
-  template<typename tNewDelete, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tAppendStackBufferLength>
+  template<typename tAppInterface, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>
   friend class Log;
 
 public:
@@ -200,112 +203,6 @@ public:
   LogConfig() noexcept = default;
 };
 
-/*
-/// Abstract aBase class for OS/architecture/dependent log functionality under
-/// the Log class. The instance directly referenced by the Log object will
-/// contain an OS thread to let the actual write into the sink happen
-/// independently of the logging.
-/// Since this object requires OS resources, it must be constructed during
-/// initialization of the application to be sure all resources are granted.
-class LogOsInterface : public BanCopyMove {
-protected:
-  /// Chunk size, see in LogConfig.
-  LogSizeType const mChunkSize;
-
-  /// Length of a pause in ms during waiting for transmission.
-  uint32_t mPauseLength;
-
-  /// See in LogConfig.
-  uint32_t mRefreshPeriod;
-
-public:
-  /// Has default constructor to let the stub versions work.
-  LogOsInterface()
-    : mChunkSize(1u)
-    , mPauseLength(1u)
-    , mRefreshPeriod(1u) {
-  }
-
-  /// Has default constructor to let the stub versions work.
-  LogOsInterface(LogConfig const & aConfig)
-    : mChunkSize(aConfig.chunkSize)
-    , mPauseLength(aConfig.pauseLength)
-    , mRefreshPeriod(aConfig.refreshPeriod) {
-  }
-
-  /// Has default destructor to let the stub versions work.
-  virtual ~LogOsInterface() = default;
-
-  /// Returns true if the implementation can examine whether we are in an ISR and we are in fact in an ISR.
-  /// By default it returns false.
-  virtual bool isInterrupt() noexcept {
-    return false;
-  }
-
-  /// Only needed in implementations without an OS-supported task name and task ID exceeding uint32_t.
-  /// This function does nothing.
-  /// Registers the given name and an artificial ID in a local map.
-  /// This function MUST NOT be called from user code.
-  /// void Log::registerCurrentTask(char const * const aTaskName) may call it only.
-  /// @param aTaskName Task name to register.
-  virtual void registerThreadName(char const * const) noexcept {
-  }
-
-  /// Returns a textual representation of the given thread ID.
-  /// This will be OS dependent.
-  /// @return the thread ID text if called from a thread.
-  virtual char const * getThreadName(uint32_t const aHandle) noexcept = 0;
-
-  /// Returns a textual representation of the current thread ID.
-  /// This will be OS dependent.
-  /// @return the thread ID text if called from a thread.
-  virtual char const * getCurrentThreadName() noexcept = 0;
-
-  /// Returns a aValue unique among threads.
-  virtual uint32_t getCurrentThreadId() noexcept = 0;
-
-  /// Returns some kind of system time in an OS dependent way.
-  /// Can be anything from OS ticks, ms or s.
-  virtual uint32_t getLogTime() const noexcept = 0;
-
-  /// Creates a separate thread for sending log contents to the sink.
-  /// @param log the Log instance to be passed as parameter to the function in the other parameter
-  /// @param threadFunc the function to serve as the body of the new thread.
-  virtual void createTransmitterThread(Log *aLog, void(* aThreadFunc)(void *)) noexcept = 0;
-
-  /// Joins the thread, if applicable to the OsInterface subclass. This des nothing.
-  virtual void joinTransmitterThread() noexcept {
-  };
-
-  /// Enqueues the chunks, possibly blocking if the queue is full.
-  virtual void push(char const * const aChunkStart, bool const aBlocks) noexcept = 0;
-
-  /// Removes the oldest chunk from the queue.
-  virtual bool pop(char * const aChunkStart) noexcept = 0;
-
-  /// Pauses the current thread for a period determined during construction
-  /// of the derived object.
-  virtual void pause() noexcept = 0;
-
-  /// Transmits the buffer contents to the sink and calls the chained
-  /// object's transmit if any.
-  /// @param buffer holds the contents to send.
-  /// @param length number of characters to send.
-  virtual void transmit(char const * const buffer, LogSizeType const length, std::atomic<bool> *mProgressFlag) noexcept {
-  }
-
-  virtual void startRefreshTimer(std::atomic<bool> *aRefreshFlag) noexcept {
-  }
-
-  /// Calls az OS-specific lock to acquire a critical section, if implemented
-  virtual void lock() noexcept {
-  }
-
-  /// Calls az OS-specific lock to release critical section, if implemented
-  virtual void unlock() noexcept {
-  }
-};*/
-
 /// Auxiliary class, not part of the Log API.
 class Chunk final {
 private:
@@ -318,17 +215,6 @@ private:
   bool mBlocks;
 
 public:
-  Chunk() noexcept
-    : tInterface(nullptr)
-    , mOrigin(nullptr)
-    , mChunk(nullptr)
-    , mChunkSize(0u)
-    , mBufferBytes(0u)
-    , mBlocks(true) {
-  }
-
-  Chunk(Chunk const& aChunk) noexcept = default;
-
   Chunk(LogOsInterface * const aOsInterface, char * const aChunk, LogSizeType const aBufferLength) noexcept
     : tInterface(aOsInterface)
     , mOrigin(aChunk)
@@ -349,20 +235,6 @@ public:
     , mBufferBytes(aBufferLength * mChunkSize)
     , mBlocks(true) {
     mChunk[0] = *reinterpret_cast<char const *>(&aTaskId);
-  }
-
-  Chunk(LogOsInterface * const aOsInterface
-    , char * const aChunk
-    , LogSizeType const aBufferLength
-    , TaskIdType const aTaskId
-    , bool const aBlocks) noexcept
-    : tInterface(aOsInterface)
-    , mOrigin(aChunk)
-    , mChunk(aChunk)
-    , mChunkSize(aOsInterface->getChunkSize())
-    , mBufferBytes(aBufferLength * mChunkSize)
-    , mBlocks(aBlocks) {
-    mChunk[0] = *reinterpret_cast<char const*>(&aTaskId);
   }
 
   char * getData() const noexcept {
@@ -426,20 +298,20 @@ enum class LogShiftChainMarker : uint8_t {
 //   static constexpr tLogSizeType cChunkSize = tChunkSize;
 // };
 
-template<typename tNewDelete, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tAppendStackBufferLength>
+template<typename tAppInterface, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tSizeofIntegerConversion = 4u, uint8_t tAppendStackBufferLength = 70u>
 class Log final {
   static_assert(tMaxTaskCount < std::numeric_limits<TaskIdType>::max());
+  static_assert(tSizeofIntegerConversion == 2u || tSizeofIntegerConversion == 4u || tSizeofIntegerConversion == 8u);
 
 private:
+  typedef typename std::conditional_t<tSizeofIntegerTransform == 8u, uint64_t, uint32_t>::type tIntegerConversionUnsigned;
+  typedef typename std::conditional_t<tSizeofIntegerTransform == 8u, int64_t, int32_t>::type tIntegerConversionSigned;
   typedef typename tInterface::LogSizeType LogSizeType;
   static_assert(std::is_unsigned<LogSizeType>);
 
   static constexpr TaskIdType cInvalidTaskId  = std::numeric_limits<TaskIdType>::max();
   static constexpr TaskIdType cLocalTaskId    = tMaxTaskCount;
   static constexpr TaskIdType cMaxTaskIdCount = tMaxTaskCount + 1u;
-  static constexpr char       cEndOfMessage   = '\r';
-  static constexpr char       cEndOfLine      = '\n';
-  /// Artificial task ID for interrupts.
 
   class Appender final {
   private:
@@ -528,35 +400,36 @@ private:
 public:
   /// Will be used as Log << something << to << log << Log::end;
   static constexpr LogShiftChainMarker end = LogShiftChainMarker::cEnd;
-
+/*
   /// Output for unknown LogTopicType parameter
   inline static constexpr char cUnknownApplicationName[cNameLength] = "UNKNOWN";
-
+*/
 private:
   static constexpr LogTopicType cFreeTopicIncrement = 1u;
   static constexpr LogTopicType cFirstFreeTopic = LogTopicInstance::cInvalidTopic + cFreeTopicIncrement;
 
-  /// The character to use instead of the thread ID if it is unknown.
-  static constexpr char cIsrTaskName = '?';
-
   /// The character to use to sign a failure during the number to text
   /// conversion. There is no distinction between illegal aBase (neither of 2,
   /// 10, 16) or overflow of the conversion buffer.
-  static constexpr char cNumericError = '#';
+  static constexpr char cNumericError            = '#';
 
-  /// Zero-aFill character.
-  static constexpr char cNumericFill            = '0';
-  static constexpr char cNumericMarkBinary      = 'b';
-  static constexpr char cNumericMarkHexadecimal = 'x';
-  static constexpr char cMinus = '-';
-  static constexpr char cSpace = ' ';
+  static constexpr char cIsrTaskName             = '?';
+  static constexpr char cEndOfMessage            = '\r';
+  static constexpr char cEndOfLine               = '\n';
+  static constexpr char cNumericFill             = '0';
+  static constexpr char cNumericMarkBinary       = 'b';
+  static constexpr char cNumericMarkHexadecimal  = 'x';
+  static constexpr char cMinus                   = '-';
+  static constexpr char cSpace                   = ' ';
+  static constexpr char cSeparatorFailure        = '@';
+  static constexpr char cFractionDot             = '.';
+  static constexpr char cPlus                    = '+';
+  static constexpr char cScientificE             = 'e';
 
-  /// Separator between header fields of the log message.
-  static constexpr char cSeparatorNormal = ' ';
 
-  /// Separator signing message truncation due to buffer overflow. An unknown
-  /// amount of subsequent messages may be missing.
-  static constexpr char cSeparatorFailure = '@';
+  inline static constexpr char cNan[]            = "nan";
+  inline static constexpr char cInf[]            = "inf";
+  inline static constexpr char cRegisteredTask[] = "-=- Registered task: ";
 
   /// Used to convert digits to characters.
   inline static constexpr char cDigit2char[NumericSystem::cHexadecimal] = {
@@ -582,17 +455,17 @@ private:
   inline static Appender* sShiftChainingAppenders;
 
 public:
-  static void init(LogConfig const *aConfig) noexcept {
-    sConfig = aConfig;
-    tInterface::createTransmitterThread([](){ transmitterThreadFunction(); });
-    sShiftChainingAppenders = tNewDelete::_newArray<Appender>(cMaxTaskIdCount);
+  static void init(LogConfig const &aConfig) {
+    sConfig = *aConfig;
+    tInterface::init(aConfig, [](){ transmitterThreadFunction(); });
+    sShiftChainingAppenders = tAppInterface::_newArray<Appender>(cMaxTaskIdCount);
   }
 
   /// Does nothing, because this object is not intended to be destroyed.
-  static void done() noexcept {
+  static void done() {
     sKeepRunning = false;
-    tInterface::joinTransmitterThread();
-    tNewDelete::deleteArray<Appender>(sShiftChainingCallBuffers);
+    tInterface::done();
+    tAppInterface::deleteArray<Appender>(sShiftChainingCallBuffers);
   }
 
   /// Registers the current task if not already present. It can register
@@ -620,7 +493,7 @@ public:
         sTaskIds[taskHandle] = sNextTaskId;
         if(sConfig->allowRegistrationLog) {
           Appender appender;
-          append(appender, "-=- Registered task: ");
+          append(appender, cRegisteredTasks);
           append(appender, tInterface::getThreadName(taskHandle));
           append(appender, cSpace);
           append(appender, sNextTaskId);
@@ -632,6 +505,9 @@ public:
       }
       else { // nothing to do
       }
+    }
+    else {
+      tAppInterface::fatalError(Exception::cOutOfTaskIds);
     }
     tInterface::unlock();
   }
@@ -648,8 +524,60 @@ public:
     return sRegisteredTopics.find(aTopic) != sRegisteredTopics.end();
   }
 
+// TODO supplement .cpp for FreeRTOS with extern "C"
   /// Transmitter thread implementation.
-  void transmitterThreadFunction() noexcept;
+  void transmitterThreadFunction() noexcept {
+    // we assume all the buffers are valid
+    CircularBuffer circularBuffer(tInterface, sConfig->circularBufferLength, mChunkSize);
+    TransmitBuffers transmitBuffers(tInterface, sConfig->transmitBufferLength, mChunkSize);
+    while(mKeepRunning.load()) {
+      // At this point the transmitBuffers must have free space for a chunk
+      if(!transmitBuffers.hasActiveTask()) {
+        if(circularBuffer.isEmpty()) {
+          static_cast<void>(transmitBuffers << circularBuffer.fetch());
+        }
+        else { // the circularbuffer may be full or not
+          static_cast<void>(transmitBuffers << circularBuffer.peek());
+          circularBuffer.pop();
+        }
+      }
+      else { // There is a task in the transmitBuffers to be continued
+        if(circularBuffer.isEmpty() || !circularBuffer.isFull() && circularBuffer.isInspected()) {
+          Chunk const &chunk = circularBuffer.fetch();
+          if(chunk.getTaskId() != nowtech::cInvalidTaskId) {
+            if(transmitBuffers.getActiveTaskId() == chunk.getTaskId()) {
+              transmitBuffers << chunk;
+            }
+            else {
+              circularBuffer.keepFetched();
+            }
+          }
+          else { // nothing to do
+          }
+        }
+        else if(!circularBuffer.isFull() && !circularBuffer.isInspected()) {
+          Chunk const &chunk = circularBuffer.inspect(transmitBuffers.getActiveTaskId());
+          if(!circularBuffer.isInspected()) {
+            transmitBuffers << chunk;
+            circularBuffer.removeFound();
+          }
+          else { // nothing to do
+          }
+        }
+        else { // the circular buffer is full
+          static_cast<void>(transmitBuffers << circularBuffer.peek());
+          circularBuffer.pop();
+          circularBuffer.clearInspected();
+        }
+      }
+      if(transmitBuffers.gotTerminalChunk()) {
+        circularBuffer.clearInspected();
+      }
+      else {
+      }
+      transmitBuffers.transmitIfNeeded();
+    }
+  }
 
   static LogShiftChainHelper i(TaskIdType const aTaskId = cLocalTaskId) noexcept {
     TaskIdType const taskId = getCurrentTaskId(aTaskId);
@@ -780,7 +708,7 @@ private:
     if(appender.isValid()) {
       if(sConfig->taskRepresentation == LogConfig::TaskRepresentation::cId) {
         append(appender, *reinterpret_cast<uint8_t*>(appender.getData()), sConfig->taskIdFormat.aBase, sConfig->taskIdFormat.aFill);
-        append(appender, cSeparatorNormal);
+        append(appender, cSpace);
       }
       else if(sConfig->taskRepresentation == LogConfig::TaskRepresentation::cName) {
         if(tInterface::isInterrupt()) {
@@ -789,13 +717,13 @@ private:
         else {
           append(appender, tInterface::getCurrentThreadName());
         }
-        append(appender, cSeparatorNormal);
+        append(appender, cSpace);
       }
       else { // nothing to do
       }
       if(sConfig->tickFormat.aBase != 0) {
         append(appender, tInterface::getLogTime(), static_cast<uint32_t>(sConfig->tickFormat.aBase), sConfig->tickFormat.aFill);
-        append(appender, cSeparatorNormal);
+        append(appender, cSpace);
       }
       else { // nothing to do
       }
@@ -809,7 +737,7 @@ private:
     if(found != mRegisteredTopics.end()) {
       startSend(aAppender);
       append(appender, found->second);
-      append(appender, cSeparatorNormal);
+      append(appender, cSpace);
     }
     else {
       aAppender.invalidate();
@@ -829,27 +757,23 @@ private:
     if(found != mRegisteredTopics.end()) {
       startSendNoHeader(aAppender);
       append(appender, found->second);
-      append(appender, cSeparatorNormal);
+      append(appender, cSpace);
     }
     else {
       aAppender.invalidate();
     }
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, char const * const aValue) noexcept {
-    append(aAppender, aValue);
-  }
-
   void append(Appender &aAppender, LogFormat const & aFormat, int8_t const aValue) noexcept {
-    append(aAppender, static_cast<int32_t>(aValue), static_cast<int32_t>(aFormat.aBase), aFormat.aFill);
+    append(aAppender, static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aFormat.aBase), aFormat.aFill);
   }
 
   void append(Appender &aAppender, LogFormat const & aFormat, int16_t const aValue) noexcept {
-    append(aAppender, static_cast<int32_t>(aValue), static_cast<int32_t>(aFormat.aBase), aFormat.aFill);
+    append(aAppender, static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aFormat.aBase), aFormat.aFill);
   }
 
   void append(Appender &aAppender, LogFormat const & aFormat, int32_t const aValue) noexcept {
-    append(aAppender, aValue, static_cast<int32_t>(aFormat.aBase), aFormat.aFill);
+    append(aAppender, static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aFormat.aBase), aFormat.aFill);
   }
 
   void append(Appender &aAppender, LogFormat const & aFormat, int64_t const aValue) noexcept {
@@ -857,15 +781,15 @@ private:
   }
 
   void append(Appender &aAppender, LogFormat const & aFormat, uint8_t const aValue) noexcept {
-    append(aAppender, static_cast<uint32_t>(aValue), static_cast<uint32_t>(aFormat.aBase), aFormat.aFill);
+    append(aAppender, static_cast<IntegerConversionUnigned>(aValue), static_cast<IntegerConversionUnigned>(aFormat.aBase), aFormat.aFill);
   }
 
   void append(Appender &aAppender, LogFormat const & aFormat, uint16_t const aValue) noexcept {
-    append(aAppender, static_cast<uint32_t>(aValue), static_cast<uint32_t>(aFormat.aBase), aFormat.aFill);
+    append(aAppender, static_cast<IntegerConversionUnigned>(aValue), static_cast<IntegerConversionUnigned>(aFormat.aBase), aFormat.aFill);
   }
 
   void append(Appender &aAppender, LogFormat const & aFormat, uint32_t const aValue) noexcept {
-    append(aAppender, aValue, static_cast<uint32_t>(aFormat.aBase), aFormat.aFill);
+    append(aAppender, static_cast<IntegerConversionUnigned>(aValue), static_cast<IntegerConversionUnigned>(aFormat.aBase), aFormat.aFill);
   }
 
   void append(Appender &aAppender, LogFormat const & aFormat, uint64_t const aValue) noexcept {
@@ -880,10 +804,10 @@ private:
     append(aAppender, aValue, aFormat.aFill);
   }
 
-  template<typename tValueType>
+/* TODO check if we cen go with compile errors template<typename tValueType>
   void append(Appender &aAppender, LogFormat const & aFormat, tValueType const aValue) noexcept {
     append(aAppender, "-=unknown=-");
-  }
+  }*/
 
   void append(Appender &aAppender, bool const aBool) noexcept {
     if(aBool) {
@@ -919,62 +843,36 @@ private:
     }
   }
 
-  /// Uses append(tValueType const aValue, tValueType const aBase, uint8_t const aFill) with sConfig->uint8Format
-  /// @param aValue number to convert and send
-  /// @return the return aValue of the last append(char const ch) call.
-  void append(Appender &aAppender, uint8_t const aValue) noexcept {
-    append(aAppender, static_cast<uint32_t>(aValue), static_cast<uint32_t>(sConfig->uint8Format.aBase), sConfig->uint8Format.aFill);
-  }
-
-  /// Uses append(tValueType const aValue, tValueType const aBase, uint8_t const aFill) with sConfig->uint16Format
-  /// @param aValue number to convert and send
-  /// @return the return aValue of the last append(char const ch) call.
-  void append(Appender &aAppender, uint16_t const aValue) noexcept {
-    append(aAppender, static_cast<uint32_t>(aValue), static_cast<uint32_t>(sConfig->uint16Format.aBase), sConfig->uint16Format.aFill);
-  }
-
-  /// Uses append(tValueType const aValue, tValueType const aBase, uint8_t const aFill) with sConfig->uint32Format
-  /// @param aValue number to convert and send
-  /// @return the return aValue of the last append(char const ch) call.
-  void append(Appender &aAppender, uint32_t const aValue) noexcept {
-    append(aAppender, aValue, static_cast<uint32_t>(sConfig->uint32Format.aBase), sConfig->uint32Format.aFill);
-  }
-
-  /// Uses append(tValueType const aValue, tValueType const aBase, uint8_t const aFill) with sConfig->uint64Format
-  /// NOTE perhaps to be avoided in 32-bit embedded env ironment.
-  /// @param aValue number to convert and send
-  /// @return the return aValue of the last append(char const ch) call.
-  void append(Appender &aAppender, uint64_t const aValue) noexcept {
-    append(aAppender, aValue, static_cast<uint64_t>(sConfig->uint32Format.aBase), sConfig->uint32Format.aFill);
-  }
-
-  /// Uses append(tValueType const aValue, tValueType const aBase, uint8_t const aFill) with sConfig->int8Format
-  /// @param aValue number to convert and send
-  /// @return the return aValue of the last append(char const ch) call.
   void append(Appender &aAppender, int8_t const aValue) noexcept {
-    append(aAppender, static_cast<int32_t>(aValue), static_cast<int32_t>(sConfig->int8Format.aBase), sConfig->int8Format.aFill);
+    append(aAppender, sConfig->int8Format, aValue);
   }
 
-  /// Uses append(tValueType const aValue, tValueType const aBase, uint8_t const aFill) with sConfig->int16Format
-  /// @param aValue number to convert and send
-  /// @return the return aValue of the last append(char const ch) call.
   void append(Appender &aAppender, int16_t const aValue) noexcept {
-    append(aAppender, static_cast<int32_t>(aValue), static_cast<int32_t>(sConfig->int16Format.aBase), sConfig->int16Format.aFill);
+    append(aAppender, Config->int16Format, aValue);
   }
 
-  /// Uses append(tValueType const aValue, tValueType const aBase, uint8_t const aFill) with sConfig->int32Format
-  /// @param aValue number to convert and send
-  /// @return the return aValue of the last append(char const ch) call.
   void append(Appender &aAppender, int32_t const aValue) noexcept {
-    append(aAppender, aValue, static_cast<int32_t>(sConfig->int32Format.aBase), sConfig->int32Format.aFill);
+    append(aAppender, Config->int32Format, aValue);
   }
 
-  /// Uses append(tValueType const aValue, tValueType const aBase, uint8_t const aFill) with sConfig->int64Format
-  /// NOTE perhaps to be avoided in 32-bit embedded environment.
-  /// @param aValue number to convert and send
-  /// @return the return aValue of the last append(char const ch) call.
   void append(Appender &aAppender, int64_t const aValue) noexcept {
-    append(aAppender, aValue, static_cast<int64_t>(sConfig->int64Format.aBase), sConfig->int64Format.aFill);
+    append(aAppender, Config->int64Format, aValue);
+  }
+
+  void append(Appender &aAppender, uint8_t const aValue) noexcept {
+    append(aAppender, sConfig->uint8Format, aValue);
+  }
+
+  void append(Appender &aAppender, uint16_t const aValue) noexcept {
+    append(aAppender, Config->uint16Format, aValue);
+  }
+
+  void append(Appender &aAppender, uint32_t const aValue) noexcept {
+    append(aAppender, Config->uint32Format, aValue);
+  }
+
+  void append(Appender &aAppender, uint64_t const aValue) noexcept {
+    append(aAppender, Config->uint64Format, aValue);
   }
 
   void append(Appender &aAppender, float const aValue) noexcept {
@@ -1059,25 +957,25 @@ private:
     aAppender.push(tmpBuffer[0]);
   }
 
-  void append(nowtech::Chunk &aChunk, double const aValue, uint8_t const aDigitsNeeded) noexcept {
+  void append(Appender& aAppender, double const aValue, uint8_t const aDigitsNeeded) noexcept {
     if(std::isnan(aValue)) {
-      append(aChunk, "nan");
+      append(aAppender, cNan);
       return;
     } else if(std::isinf(aValue)) {
-      append(aChunk, "inf");
+      append(aAppender, cInf);
       return;
     } else if(aValue == 0.0) {
-      aChunk.push('0');
+      aAppender.push(cNumericFill);
       return;
     }
     else {
       double aValue = aValue;
       if(aValue < 0) {
           aValue = -aValue;
-          aChunk.push('-');
+          aAppender.push(cMinus);
       }
       else if(sConfig->alignSigned) {
-        aChunk.push(' ');
+        aAppender.push(cSpace);
       }
       else { // nothing to do
       }
@@ -1091,10 +989,10 @@ private:
         }
         else { // nothing to do
         }
-        aChunk.push(cDigit2char[firstDigit]);
+        aAppender.push(cDigit2char[firstDigit]);
         normalized = 10.0 * (normalized - firstDigit);
         if(i == 1u) {
-          aChunk.push('.');
+          aAppender.push(cFractionDot);
         }
         else { // nothing to do
         }
@@ -1105,18 +1003,18 @@ private:
       }
       else { // nothing to do
       }
-      aChunk.push(cDigit2char[firstDigit]);
-      aChunk.push('e');
+      aAppender.push(cDigit2char[firstDigit]);
+      aAppender.push(cScientificE);
       if(mantissa >= 0) {
-        aChunk.push('+');
+        aAppender.push(cPlus);
       }
       else { // nothing to do
       }
-      append(aChunk, static_cast<int32_t>(mantissa), static_cast<int32_t>(10), 0u);
+      append(aAppender, static_cast<int32_t>(mantissa), static_cast<int32_t>(10), 0u);
     }
   }
 };// class Log
 
-} // namespace nowtech
+} // namespace nowtech::log
 
 #endif // NOWTECH_LOG_INCLUDED

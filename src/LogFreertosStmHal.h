@@ -96,37 +96,37 @@ namespace nowtech {
 
     /// This object is not intended to be deleted, so control should never
     /// get here.
-    virtual ~LogFreeRtosStmHal() {
+    static ~LogFreeRtosStmHal() {
       vQueueDelete(mQueue);
       xTimerDelete(mRefreshTimer, 0);
       vSemaphoreDelete(mApiGuard);
     }
 
     /// Returns true if we are in an ISR.
-    virtual bool isInterrupt() noexcept override {
+    static bool isInterrupt() noexcept {
       return stm32utils::isInterrupt();
     }
 
     /// Returns the task name.
     /// Must not be called from ISR.
-    virtual const char * getThreadName(uint32_t const aHandle) noexcept override {
+    static const char * getThreadName(uint32_t const aHandle) noexcept {
       return pcTaskGetName(reinterpret_cast<TaskHandle_t>(aHandle));
     }
 
     /// Returns the current task name.
     /// Must not be called from ISR.
-    virtual const char * getCurrentThreadName() noexcept override {
+    static const char * getCurrentThreadName() noexcept {
       return pcTaskGetName(nullptr);
     }
 
     /// Returns the FreeRTOS-specific thread ID.
     /// Must not be called from ISR.
-    virtual uint32_t getCurrentThreadId() noexcept override {
+    static uint32_t getCurrentThreadId() noexcept {
       return reinterpret_cast<uint32_t>(xTaskGetCurrentTaskHandle());
     }
 
     /// Returns the FreeRTOS tick count converted into ms.
-    virtual uint32_t getLogTime() const noexcept override {
+    static uint32_t getLogTime() const noexcept {
       return nowtech::OsUtil::getUptimeMillis();
     }
 
@@ -134,12 +134,12 @@ namespace nowtech {
     /// @param log the Log object to operate on.
     /// @param threadFunc the C function which serves as the task body and
     /// which will call Log.transmitterThread.
-    virtual void createTransmitterThread(Log *aLog, void(* aThreadFunc)(void *)) noexcept override {
+    static void createTransmitterThread(Log *aLog, void(* aThreadFunc)(void *)) noexcept {
       xTaskCreate(aThreadFunc, "logtransmitter", mTaskStackLength, aLog, mPriority, &mTaskHandle);
     }
 
     /// Joins the thread.
-    virtual void joinTransmitterThread() noexcept override {
+    static void joinTransmitterThread() noexcept {
       vTaskDelete(mTaskHandle);
     }
 
@@ -153,7 +153,7 @@ namespace nowtech {
     /// the end of the ISR. Depending on your use-case this may
     /// be acceptable or not."
     /// https://stackoverflow.com/questions/28985010/about-pxhigherprioritytaskwoken
-    virtual void push(char const * const aChunkStart, bool const aBlocks) noexcept override {
+    static void push(char const * const aChunkStart, bool const aBlocks) noexcept {
       if(stm32utils::isInterrupt()) {
         BaseType_t higherPriorityTaskWoken;
         xQueueSendFromISR(mQueue, aChunkStart, &higherPriorityTaskWoken);
@@ -168,13 +168,13 @@ namespace nowtech {
     }
 
     /// Removes the oldest chunk from the queue.
-    virtual bool pop(char * const aChunkStart) noexcept override {
+    static bool pop(char * const aChunkStart) noexcept {
       auto ret = xQueueReceive(mQueue, aChunkStart, nowtech::OsUtil::msToRtosTick(mPauseLength));
       return ret == pdTRUE ? true : false; // TODO remove
     }
 
     /// Pauses execution for the period given in the constructor.
-    virtual void pause() noexcept override {
+    static void pause() noexcept {
       nowtech::OsUtil::taskDelayMillis(mPauseLength);
     }
 
@@ -182,7 +182,7 @@ namespace nowtech {
     /// @param buffer start of data
     /// @param length length of data
     /// @param aProgressFlag address of flag to be set on transmission end.
-    virtual void transmit(const char * const aBuffer, LogSizeType const aLength, std::atomic<bool> *aProgressFlag) noexcept override {
+    static void transmit(const char * const aBuffer, LogSizeType const aLength, std::atomic<bool> *aProgressFlag) noexcept {
       sProgressFlag = aProgressFlag;
       HAL_UART_Transmit_DMA(sSerialDescriptor, reinterpret_cast<uint8_t*>(const_cast<char*>(aBuffer)), aLength);
     }
@@ -203,7 +203,7 @@ namespace nowtech {
     }
 
     /// Starts the timer after which a partially filled buffer should be sent.
-    virtual void startRefreshTimer(std::atomic<bool> *aRefreshFlag) noexcept override {
+    static void startRefreshTimer(std::atomic<bool> *aRefreshFlag) noexcept {
       sRefreshNeeded = aRefreshFlag;
       xTimerStart(mRefreshTimer, 0);
     }
@@ -214,12 +214,12 @@ namespace nowtech {
     }
 
     /// Calls az OS-specific lock to acquire a critical section, if implemented
-    virtual void lock() noexcept override {
+    static void lock() noexcept {
       xSemaphoreTakeFromISR(mApiGuard, nullptr);
     }
 
     /// Calls az OS-specific lock to release critical section, if implemented
-    virtual void unlock() noexcept override {
+    static void unlock() noexcept {
       xSemaphoreGiveFromISR(mApiGuard, nullptr);
     }
   };

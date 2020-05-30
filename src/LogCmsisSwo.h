@@ -43,40 +43,40 @@ namespace nowtech {
 
     /// This object is not intended to be deleted, so control should never
     /// get here.
-    virtual ~LogCmsisSwo() {
+    static ~LogCmsisSwo() {
     }
 
     /// Returns true if we are in an ISR.
-    virtual bool isInterrupt() noexcept override {
+    static bool isInterrupt() noexcept {
       return stm32utils::isInterrupt();
     }
 
     /// Returns empty string.
-    virtual const char * const getThreadName(uint32_t const aHandle) noexcept {
+    static const char * const getThreadName(uint32_t const aHandle) noexcept {
       return "";
     }
 
     /// Returns nullptr.
-    virtual const char * const getCurrentThreadName() noexcept {
+    static const char * const getCurrentThreadName() noexcept {
       return nullptr;
     }
 
     /// Returns 0.
-    virtual uint32_t getCurrentThreadId() noexcept {
+    static uint32_t getCurrentThreadId() noexcept {
       return 0u;
     }
 
     /// Returns 0.
-    virtual uint32_t getLogTime() const noexcept {
+    static uint32_t getLogTime() const noexcept {
       return 0u;
     }
 
     /// Does nothing.
-    virtual void createTransmitterThread(Log *, void(*)(void *)) noexcept {
+    static void createTransmitterThread(Log *, void(*)(void *)) noexcept {
     }
 
     /// Sends the chunk contents immediately.
-    virtual void push(char const * const aChunkStart, bool const) noexcept {
+    static void push(char const * const aChunkStart, bool const) noexcept {
       LogSizeType length;
       for(length = 0; length < mChunkSize - 1; ++length) {
         ITM_SendChar(static_cast<uint32_t>(aChunkStart[length + 1]));
@@ -88,16 +88,16 @@ namespace nowtech {
     }
 
     /// Does nothing.
-    virtual bool pop(char * const aChunkStart) noexcept {
+    static bool pop(char * const aChunkStart) noexcept {
       return false;
     }
 
     /// Does nothing.
-    virtual void pause() noexcept {
+    static void pause() noexcept {
     }
 
     /// Does nothing.
-    virtual void transmit(const char * const, LogSizeType const, std::atomic<bool> *) noexcept {
+    static void transmit(const char * const, LogSizeType const, std::atomic<bool> *) noexcept {
     }
 
     /// Does nothing.
@@ -105,7 +105,7 @@ namespace nowtech {
     }
 
     /// Does nothing.
-    virtual void startRefreshTimer(std::atomic<bool> *) noexcept {
+    static void startRefreshTimer(std::atomic<bool> *) noexcept {
     }
 
     /// Does nothing.

@@ -38,47 +38,47 @@ public:
 
   /// This object is not intended to be deleted, so control should never
   /// get here.
-  virtual ~LogNop() {
+  static ~LogNop() {
   }
 
   /// @return nullptr.
-  virtual char const * getCurrentThreadName() noexcept {
+  static char const * getCurrentThreadName() noexcept {
     return "";
   }
 
-  virtual char const *getThreadName(uint32_t const aHandle) noexcept {
+  static char const *getThreadName(uint32_t const aHandle) noexcept {
     return nullptr;
   };
 
   /// Returns 0.
-  virtual uint32_t getCurrentThreadId() noexcept {
+  static uint32_t getCurrentThreadId() noexcept {
     return 0u;
   }
 
   /// Returns 0.
-  virtual uint32_t getLogTime() const noexcept {
+  static uint32_t getLogTime() const noexcept {
     return 0u;
   }
 
   /// Does nothing.
-  virtual void createTransmitterThread(Log *, void(*)(void *)) noexcept {
+  static void createTransmitterThread(Log *, void(*)(void *)) noexcept {
   }
 
   /// Does nothing.
-  virtual void push(char const * const aChunkStart, bool const) noexcept {
+  static void push(char const * const aChunkStart, bool const) noexcept {
   }
 
   /// Does nothing.
-  virtual bool pop(char * const aChunkStart) noexcept {
+  static bool pop(char * const aChunkStart) noexcept {
     return true;
   }
 
   /// Does nothing.
-  virtual void pause() noexcept {
+  static void pause() noexcept {
   }
 
   /// Does nothing.
-  virtual void transmit(const char * const, LogSizeType const, std::atomic<bool> *) noexcept {
+  static void transmit(const char * const, LogSizeType const, std::atomic<bool> *) noexcept {
   }
 
   /// Does nothing.
@@ -86,7 +86,7 @@ public:
   }
 
   /// Does nothing.
-  virtual void startRefreshTimer(std::atomic<bool> *) noexcept {
+  static void startRefreshTimer(std::atomic<bool> *) noexcept {
   }
 
   /// Does nothing.

@@ -78,7 +78,7 @@ namespace nowtech {
     /// Sends the chunk contents immediately.
     static void push(char const * const aChunkStart, bool const) noexcept {
       LogSizeType length;
-      for(length = 0; length < mChunkSize - 1; ++length) {
+      for(length = 0; length < cChunkSize - 1; ++length) {
         ITM_SendChar(static_cast<uint32_t>(aChunkStart[length + 1]));
         if(aChunkStart[length + 1] == '\n') {
           ++length;

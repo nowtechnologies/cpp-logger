@@ -88,7 +88,7 @@ namespace nowtech {
       : LogOsInterface(aConfig)
       , mTaskStackLength(aTaskStackLength)
       , mPriority(aPriority) {
-      mQueue = xQueueCreate(aConfig.queueLength, mChunkSize);
+      mQueue = xQueueCreate(aConfig.queueLength, cChunkSize);
       mRefreshTimer = xTimerCreate("LogRefreshTimer", pdMS_TO_TICKS(mRefreshPeriod), pdFALSE, nullptr, logRefreshNeededFreeRtosStmHal);
       mApiGuard = xSemaphoreCreateMutex();
       sSerialDescriptor = aSerialDescriptor;

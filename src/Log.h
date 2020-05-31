@@ -26,6 +26,7 @@
 
 #include <cstdint>
 #include <type_traits>
+#include <algorithm>
 #include <atomic>
 #include <limits>
 #include <cmath>
@@ -203,93 +204,10 @@ public:
   LogConfig() noexcept = default;
 };
 
-/// Auxiliary class, not part of the Log API.
-class Chunk final {
-private:
-  LogOsInterface *tInterface;
-  char * mOrigin;
-  char * mChunk;
-  LogSizeType mChunkSize;
-  LogSizeType mBufferBytes;
-  LogSizeType mIndex = 1;
-  bool mBlocks;
-
-public:
-  Chunk(LogOsInterface * const aOsInterface, char * const aChunk, LogSizeType const aBufferLength) noexcept
-    : tInterface(aOsInterface)
-    , mOrigin(aChunk)
-    , mChunk(aChunk)
-    , mChunkSize(aOsInterface->getChunkSize())
-    , mBufferBytes(aBufferLength * mChunkSize)
-    , mBlocks(true) {
-  }
-
-  Chunk(LogOsInterface * const aOsInterface
-    , char * const aChunk
-    , LogSizeType const aBufferLength
-    , TaskIdType const aTaskId) noexcept
-    : tInterface(aOsInterface)
-    , mOrigin(aChunk)
-    , mChunk(aChunk)
-    , mChunkSize(aOsInterface->getChunkSize())
-    , mBufferBytes(aBufferLength * mChunkSize)
-    , mBlocks(true) {
-    mChunk[0] = *reinterpret_cast<char const *>(&aTaskId);
-  }
-
-  char * getData() const noexcept {
-    return mChunk;
-  }
-
-  TaskIdType getTaskId() const noexcept {
-    return *reinterpret_cast<TaskIdType*>(mChunk);
-  }
-
-  char * const operator++() noexcept {
-    mIndex = 1u;
-    mChunk += mChunkSize;
-    if(mChunk == (mOrigin + mBufferBytes)) {
-      mChunk = mOrigin;
-    }
-    else { // nothing to do
-    }
-    return mChunk;
-  }
-
-  Chunk& operator=(char * const aStart) noexcept {
-    mIndex = 1u;
-    mChunk = const_cast<char*>(aStart);
-    return *this;
-  }
-
-  Chunk& operator=(Chunk const& aChunk) noexcept {
-    mIndex = 1u;
-    for (LogSizeType i = 0u; i < mChunkSize; i++) {
-      mChunk[i] = aChunk.mChunk[i];
-    }
-    return *this;
-  }
-
-  void invalidate() noexcept {
-    mIndex = 1u;
-    mChunk[0] = static_cast<char>(cInvalidTaskId);
-  }
-
-  void pop() noexcept {
-    mIndex = 1u;
-    if(!tInterface->pop(mChunk)) {
-      mChunk[0] = static_cast<char>(cInvalidTaskId);
-    }
-    else { // nothing to do
-    }
-  }
-};
-
 /// Dummy type to use in << chain as end marker.
 enum class LogShiftChainMarker : uint8_t {
   cEnd      = 0u
 };
-
 
 // template<typename tLogSizeType, bool tBlocks = false, tLogSizeType tChunkSize = 8u>
 // class LogInterface {
@@ -304,22 +222,52 @@ class Log final {
   static_assert(tSizeofIntegerConversion == 2u || tSizeofIntegerConversion == 4u || tSizeofIntegerConversion == 8u);
 
 private:
-  typedef typename std::conditional_t<tSizeofIntegerTransform == 8u, uint64_t, uint32_t>::type tIntegerConversionUnsigned;
-  typedef typename std::conditional_t<tSizeofIntegerTransform == 8u, int64_t, int32_t>::type tIntegerConversionSigned;
+  static constexpr uint8_t  cSizeofIntegerConversion = tSizeofIntegerConversion;
+  typedef typename std::conditional<cSizeofIntegerConversion == 8u, uint64_t, uint32_t>::type IntegerConversionUnsigned;
+  typedef typename std::conditional<cSizeofIntegerConversion == 8u, int64_t, int32_t>::type IntegerConversionSigned;
   typedef typename tInterface::LogSizeType LogSizeType;
-  static_assert(std::is_unsigned<LogSizeType>);
+  static_assert(std::is_unsigned<LogSizeType>::value);
 
-  static constexpr TaskIdType cInvalidTaskId  = std::numeric_limits<TaskIdType>::max();
-  static constexpr TaskIdType cLocalTaskId    = tMaxTaskCount;
-  static constexpr TaskIdType cMaxTaskIdCount = tMaxTaskCount + 1u;
+  static constexpr TaskIdType  cInvalidTaskId  = std::numeric_limits<TaskIdType>::max();
+  static constexpr TaskIdType  cLocalTaskId    = tMaxTaskCount;
+  static constexpr TaskIdType  cMaxTaskIdCount = tMaxTaskCount + 1u;
+  static constexpr LogSizeType cChunkSize      = tInterface::cChunkSize;
+
+  static constexpr LogTopicType cFreeTopicIncrement = 1u;
+  static constexpr LogTopicType cFirstFreeTopic = LogTopicInstance::cInvalidTopic + cFreeTopicIncrement;
+
+  static constexpr char cNumericError            = '#';
+
+  static constexpr char cIsrTaskName             = '?';
+  static constexpr char cEndOfMessage            = '\r';
+  static constexpr char cEndOfLine               = '\n';
+  static constexpr char cNumericFill             = '0';
+  static constexpr char cNumericMarkBinary       = 'b';
+  static constexpr char cNumericMarkHexadecimal  = 'x';
+  static constexpr char cMinus                   = '-';
+  static constexpr char cSpace                   = ' ';
+  static constexpr char cSeparatorFailure        = '@';
+  static constexpr char cFractionDot             = '.';
+  static constexpr char cPlus                    = '+';
+  static constexpr char cScientificE             = 'e';
+
+
+  inline static constexpr char cNan[]            = "nan";
+  inline static constexpr char cInf[]            = "inf";
+  inline static constexpr char cRegisteredTask[] = "-=- Registered task: ";
+
+  /// Used to convert digits to characters.
+  inline static constexpr char cDigit2char[NumericSystem::cHexadecimal] = {
+    '0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'
+  };
 
   class Appender final {
   private:
     LogSizeType mIndex = 1u;
-    char mChunk[tInterface::cChunkSize];
+    char mChunk[cChunkSize];
 
   public:
-    void Appender(TaskIdType const aTaskId) noexcept : mIndex(1u) {
+    Appender(TaskIdType const aTaskId) noexcept : mIndex(1u) {
       mChunk[0u] = aTaskId;
     }
 
@@ -339,7 +287,7 @@ private:
     void push(char const aChar) noexcept {
       mChunk[mIndex] = aChar;
       ++mIndex;
-      if(mIndex == tInterface::cChunkSize) {
+      if(mIndex == cChunkSize) {
         tInterface::push(mChunk);
         mIndex = 1u;
       }
@@ -352,9 +300,284 @@ private:
       tInterface::push(mChunk);
       mIndex = 1u;
     }
-  };
+  }; // class Appender
 
-  /// Dummy type to use in << chain as end marker.
+  class Chunk final {
+  private:
+    char * mOrigin;
+    char * mChunk;
+    LogSizeType mBufferBytes;
+
+  public:
+    Chunk(char * const aChunk, LogSizeType const aBufferLength, char * const aNow) noexcept
+      : mOrigin(aChunk)
+      , mChunk(aNow)
+      , mBufferBytes(aBufferLength * cChunkSize) {
+    }
+
+    Chunk(char * const aChunk
+      , LogSizeType const aBufferLength
+      , TaskIdType const aTaskId) noexcept
+      : mOrigin(aChunk)
+      , mChunk(aChunk)
+      , mBufferBytes(aBufferLength * cChunkSize) {
+      mChunk[0] = *reinterpret_cast<char const *>(&aTaskId);
+    }
+
+    char* getData() const noexcept {
+      return mChunk;
+    }
+
+    TaskIdType getTaskId() const noexcept {
+      return *reinterpret_cast<TaskIdType*>(mChunk);
+    }
+
+    char * const operator++() noexcept {
+      mChunk += cChunkSize;
+      if(mChunk == (mOrigin + mBufferBytes)) {
+        mChunk = mOrigin;
+      }
+      else { // nothing to do
+      }
+      return mChunk;
+    }
+
+    void operator=(char * const aStart) noexcept {
+      mChunk = const_cast<char*>(aStart);
+    }
+
+    void operator=(Chunk const& aChunk) noexcept {
+      std::copy_n(mChunk, cChunkSize, aChunk.mChunk);
+    }
+
+    void invalidate() noexcept {
+      mChunk[0] = static_cast<char>(cInvalidTaskId);
+    }
+
+    void fetch() noexcept {
+      if(!tInterface::fetch(mChunk)) {
+        mChunk[0u] = static_cast<char>(cInvalidTaskId);
+      }
+      else { // nothing to do
+      }
+    }
+  }; // class Chunk
+
+  class CircularBuffer final {
+  private:
+    /// Counted in chunks
+    LogSizeType const cBufferLengthInChunks;
+    char * const mBuffer;
+    Chunk mStuffStart;
+    Chunk mStuffEnd;
+    LogSizeType mCount = 0u;
+    LogSizeType mInspectedCount = 0u;
+    bool mInspected = true;
+    Chunk mFound;
+
+  public:
+    CircularBuffer(LogSizeType const aBufferLength) noexcept
+      : cBufferLengthInChunks(aBufferLength)
+      , mBuffer(tAppInterface::template _newArray<char>(aBufferLength * cChunkSize))
+      , mStuffStart(mBuffer, aBufferLength, cInvalidTaskId)
+      , mStuffEnd(mBuffer, aBufferLength, cInvalidTaskId)
+      , mFound(mBuffer, aBufferLength, cInvalidTaskId) {
+    }
+
+    /// Not intended to be destroyed
+    ~CircularBuffer() {
+      tAppInterface::template _deleteArray<char>(mBuffer);
+    }
+
+    bool isEmpty() const noexcept {
+      return mCount == 0;
+    }
+
+    bool isFull() const noexcept {
+      return mCount == cBufferLengthInChunks;
+    }
+
+    bool isInspected() const noexcept {
+      return mInspected;
+    }
+
+    void clearInspected() noexcept {
+      mInspected = false;
+      mInspectedCount = 0;
+      mFound = mStuffStart.getData();
+    }
+
+    Chunk const &fetch() noexcept {
+      mStuffEnd.fetch();
+      return mStuffEnd;
+    }
+
+    Chunk const &peek() const noexcept {
+      return mStuffStart;
+    }
+
+    void pop() noexcept {
+      --mCount;
+      ++mStuffStart;
+      mFound = mStuffStart.getData();
+    }
+
+    void keepFetched() noexcept {
+      ++mCount;
+      ++mStuffEnd;
+    }
+
+    Chunk const &inspect(TaskIdType const aTaskId) noexcept {
+      while(mInspectedCount < mCount && mFound.getTaskId() != aTaskId) {
+        ++mInspectedCount;
+        ++mFound;
+      }
+      if(mInspectedCount == mCount) {
+        Chunk source(mBuffer, cBufferLengthInChunks, mStuffStart.getData());
+        Chunk destination(mBuffer, cBufferLengthInChunks, mStuffStart.getData());
+        while(source.getData() != mStuffEnd.getData()) {
+          if(destination.getTaskId() != cInvalidTaskId) {
+            if(source.getData() == destination.getData()) {
+              ++source;
+            }
+            else { // nothing to do
+            }
+            ++destination;
+          }
+          else {
+            if(source.getTaskId() == cInvalidTaskId) {
+              ++source;
+            }
+            else {
+              destination = source;
+              source.invalidate();
+            }
+          }
+        }
+        char *startRemoved = destination.getData();
+        char *endRemoved = mStuffEnd.getData();
+        if(startRemoved > endRemoved) {
+          endRemoved += cChunkSize * cBufferLengthInChunks;
+        }
+        else { // nothing to do
+        }
+        mCount -= (endRemoved - startRemoved) / cChunkSize;
+        mStuffEnd = destination.getData();
+        mInspected = true;
+      }
+      else { // nothing to do
+      }
+      return mFound;
+    }
+
+    void removeFound() noexcept {
+      mFound.invalidate();
+    }
+  }; // class CircularBuffer
+
+  class TransmitBuffers final {
+  private:
+    /// counted in chunks
+    LogSizeType const cBufferLengthInChunks;
+    LogSizeType const cBufferLengthInBytes;
+    LogSizeType mBufferToWrite = 0u;
+    char * mBuffers[2];
+    LogSizeType mChunkCount[2] = { 0u, 0u };
+    LogSizeType mIndex[2] = { 0u, 0u };
+    uint8_t mActiveTaskId = cInvalidTaskId;
+    bool mWasTerminalChunk = false;
+    std::atomic<bool> mTransmitInProgress = false;
+    std::atomic<bool> mRefreshNeeded = false;
+
+  public:
+    TransmitBuffers(LogSizeType const aBufferLength) noexcept
+      : cBufferLengthInChunks(aBufferLength)
+      , cBufferLengthInBytes(aBufferLength * (cChunkSize - 1u)) {
+      mBuffers[0] = tAppInterface::template _newArray<char>(cBufferLengthInBytes);
+      mBuffers[1] = tAppInterface::template _newArray<char>(cBufferLengthInBytes);
+      tInterface::startRefreshTimer(&mRefreshNeeded); // TODO eliminate
+    }
+
+    ~TransmitBuffers() noexcept {
+      tAppInterface::template _deleteArray<char>(mBuffers[0]);
+      tAppInterface::template _deleteArray<char>(mBuffers[1]);
+    }
+
+    bool hasActiveTask() const noexcept {
+      return mActiveTaskId != cInvalidTaskId;
+    }
+
+    TaskIdType getActiveTaskId() const noexcept {
+      return mActiveTaskId;
+    }
+
+    bool gotTerminalChunk() const noexcept {
+      return mWasTerminalChunk;
+    }
+
+    /// Assumes that the buffer to write has space for it
+    TransmitBuffers &operator<<(Chunk const &aChunk) noexcept {
+      if(aChunk.getTaskId() != cInvalidTaskId) {
+        LogSizeType i = 1u;
+        char const * const origin = aChunk.getData();
+        mWasTerminalChunk = false;
+        char * buffer = mBuffers[mBufferToWrite];
+        LogSizeType &index = mIndex[mBufferToWrite];
+        while(!mWasTerminalChunk && i < cChunkSize) {
+          if(index < cBufferLengthInBytes) {
+            buffer[index] = origin[i];
+            if (origin[i] == cEndOfMessage) {
+              buffer[index] = cEndOfLine;
+            }
+            else { // nothing to do
+            }
+            ++index;
+          }
+          else { // nothing to do
+          }
+          mWasTerminalChunk = (origin[i] == cEndOfMessage);
+          ++i;          
+        }
+        ++mChunkCount[mBufferToWrite];
+        if(mWasTerminalChunk) {
+          mActiveTaskId = cInvalidTaskId;
+        }
+        else {
+          mActiveTaskId = aChunk.getTaskId();
+        }
+      }
+      return *this;
+    }
+
+    void transmitIfNeeded() noexcept {
+      if(mChunkCount[mBufferToWrite] == 0u) {
+        return;
+      }
+      else {
+        if(mChunkCount[mBufferToWrite] == cBufferLengthInChunks) {
+          while(mTransmitInProgress) {
+            tInterface::pause(); // TODO elimninate
+          }
+          mRefreshNeeded = true;
+        }
+        else { // nothing to do
+        }
+        if(!mTransmitInProgress && mRefreshNeeded) {
+          mTransmitInProgress = true;
+          tInterface::transmit(mBuffers[mBufferToWrite], mIndex[mBufferToWrite], &mTransmitInProgress);
+          mBufferToWrite = 1 - mBufferToWrite;
+          mIndex[mBufferToWrite] = 0u;
+          mChunkCount[mBufferToWrite] = 0u;
+          mRefreshNeeded = false;
+          tInterface::startRefreshTimer(&mRefreshNeeded);
+        }
+        else { // nothing to do
+        }
+      }
+    }
+  }; // class TransmitBuffers
+
+   /// Dummy type to use in << chain as end marker.
   enum class LogShiftChainMarker : uint8_t {
     cEnd      = 0u
   };
@@ -392,49 +615,8 @@ private:
       else { // nothing to do
       }
     }
-  };
+  }; // class LogShiftChainHelper
   friend class LogShiftChainHelper;
-
-  static constexpr uint32_t cNameLength  =  8u;
-
-public:
-  /// Will be used as Log << something << to << log << Log::end;
-  static constexpr LogShiftChainMarker end = LogShiftChainMarker::cEnd;
-/*
-  /// Output for unknown LogTopicType parameter
-  inline static constexpr char cUnknownApplicationName[cNameLength] = "UNKNOWN";
-*/
-private:
-  static constexpr LogTopicType cFreeTopicIncrement = 1u;
-  static constexpr LogTopicType cFirstFreeTopic = LogTopicInstance::cInvalidTopic + cFreeTopicIncrement;
-
-  /// The character to use to sign a failure during the number to text
-  /// conversion. There is no distinction between illegal aBase (neither of 2,
-  /// 10, 16) or overflow of the conversion buffer.
-  static constexpr char cNumericError            = '#';
-
-  static constexpr char cIsrTaskName             = '?';
-  static constexpr char cEndOfMessage            = '\r';
-  static constexpr char cEndOfLine               = '\n';
-  static constexpr char cNumericFill             = '0';
-  static constexpr char cNumericMarkBinary       = 'b';
-  static constexpr char cNumericMarkHexadecimal  = 'x';
-  static constexpr char cMinus                   = '-';
-  static constexpr char cSpace                   = ' ';
-  static constexpr char cSeparatorFailure        = '@';
-  static constexpr char cFractionDot             = '.';
-  static constexpr char cPlus                    = '+';
-  static constexpr char cScientificE             = 'e';
-
-
-  inline static constexpr char cNan[]            = "nan";
-  inline static constexpr char cInf[]            = "inf";
-  inline static constexpr char cRegisteredTask[] = "-=- Registered task: ";
-
-  /// Used to convert digits to characters.
-  inline static constexpr char cDigit2char[NumericSystem::cHexadecimal] = {
-    '0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'
-  };
 
   /// Can be used to shut off the transmitter thread, if any
   inline static std::atomic<bool> sKeepRunning = true;
@@ -454,18 +636,27 @@ private:
 
   inline static Appender* sShiftChainingAppenders;
 
+  Log() = delete;
+
 public:
+  /// Will be used as Log << something << to << log << Log::end;
+  static constexpr LogShiftChainMarker end = LogShiftChainMarker::cEnd;
+/*
+  /// Output for unknown LogTopicType parameter
+  inline static constexpr char cUnknownApplicationName[cNameLength] = "UNKNOWN";
+*/
+
   static void init(LogConfig const &aConfig) {
-    sConfig = *aConfig;
+    sConfig = &aConfig;
     tInterface::init(aConfig, [](){ transmitterThreadFunction(); });
-    sShiftChainingAppenders = tAppInterface::_newArray<Appender>(cMaxTaskIdCount);
+    sShiftChainingAppenders = tAppInterface::template _newArray<Appender>(cMaxTaskIdCount);
   }
 
   /// Does nothing, because this object is not intended to be destroyed.
   static void done() {
     sKeepRunning = false;
     tInterface::done();
-    tAppInterface::deleteArray<Appender>(sShiftChainingCallBuffers);
+    tAppInterface::template deleteArray<Appender>(sShiftChainingAppenders);
   }
 
   /// Registers the current task if not already present. It can register
@@ -492,8 +683,8 @@ public:
       if(found == sTaskIds.end()) {
         sTaskIds[taskHandle] = sNextTaskId;
         if(sConfig->allowRegistrationLog) {
-          Appender appender;
-          append(appender, cRegisteredTasks);
+          Appender appender(sNextTaskId);
+          append(appender, cRegisteredTask);
           append(appender, tInterface::getThreadName(taskHandle));
           append(appender, cSpace);
           append(appender, sNextTaskId);
@@ -526,11 +717,11 @@ public:
 
 // TODO supplement .cpp for FreeRTOS with extern "C"
   /// Transmitter thread implementation.
-  void transmitterThreadFunction() noexcept {
+  static void transmitterThreadFunction() noexcept {
     // we assume all the buffers are valid
-    CircularBuffer circularBuffer(tInterface, sConfig->circularBufferLength, mChunkSize);
-    TransmitBuffers transmitBuffers(tInterface, sConfig->transmitBufferLength, mChunkSize);
-    while(mKeepRunning.load()) {
+    CircularBuffer circularBuffer(tInterface, sConfig->circularBufferLength, cChunkSize);
+    TransmitBuffers transmitBuffers(tInterface, sConfig->transmitBufferLength, cChunkSize);
+    while(sKeepRunning) {
       // At this point the transmitBuffers must have free space for a chunk
       if(!transmitBuffers.hasActiveTask()) {
         if(circularBuffer.isEmpty()) {
@@ -544,7 +735,7 @@ public:
       else { // There is a task in the transmitBuffers to be continued
         if(circularBuffer.isEmpty() || !circularBuffer.isFull() && circularBuffer.isInspected()) {
           Chunk const &chunk = circularBuffer.fetch();
-          if(chunk.getTaskId() != nowtech::cInvalidTaskId) {
+          if(chunk.getTaskId() != cInvalidTaskId) {
             if(transmitBuffers.getActiveTaskId() == chunk.getTaskId()) {
               transmitBuffers << chunk;
             }
@@ -577,6 +768,7 @@ public:
       }
       transmitBuffers.transmitIfNeeded();
     }
+    // TODO perhaps one day notify the done() method about reaching this line. Note, this is hard to do here in a platform-independent way.
   }
 
   static LogShiftChainHelper i(TaskIdType const aTaskId = cLocalTaskId) noexcept {
@@ -584,7 +776,7 @@ public:
     Appender& appender = sShiftChainingAppenders[taskId];
     appender.startWithTaskId(taskId);
     startSend(appender);
-    return nowtech::LogShiftChainHelper(appender);
+    return LogShiftChainHelper(appender);
   }
 
   static LogShiftChainHelper i(LogTopicType const aTopic, TaskIdType const aTaskId = cLocalTaskId) noexcept {
@@ -592,7 +784,7 @@ public:
     Appender& appender = sShiftChainingAppenders[taskId];
     appender.startWithTaskId(taskId);
     startSend(appender, aTopic);
-    return nowtech::LogShiftChainHelper(appender);
+    return LogShiftChainHelper(appender);
   }
 
   static LogShiftChainHelper n(TaskIdType const aTaskId = cLocalTaskId) noexcept {
@@ -600,7 +792,7 @@ public:
     Appender& appender = sShiftChainingAppenders[taskId];
     appender.startWithTaskId(taskId);
     startSendNoHeader(appender);
-    return nowtech::LogShiftChainHelper(appender);
+    return LogShiftChainHelper(appender);
   }
 
   static LogShiftChainHelper n(LogTopicType const aTopic, TaskIdType const aTaskId = cLocalTaskId) noexcept {
@@ -608,7 +800,7 @@ public:
     Appender& appender = sShiftChainingAppenders[taskId];
     appender.startWithTaskId(taskId);
     startSendNoHeader(appender, aTopic);
-    return nowtech::LogShiftChainHelper(appender);
+    return LogShiftChainHelper(appender);
   }
 
   template<typename tValueType>
@@ -692,7 +884,7 @@ public:
   }
 
 private:
-  TaskIdType getCurrentTaskId(TaskIdType const aTaskId) const noexcept {
+  static TaskIdType getCurrentTaskId(TaskIdType const aTaskId) noexcept {
     TaskIdType result = aTaskId;
     if(aTaskId == cLocalTaskId && !tInterface::isInterrupt()) {
       auto found = sTaskIds.find(tInterface::getCurrentThreadId());
@@ -703,27 +895,27 @@ private:
     return result;
   }
 
-  void startSend(Appender& aAppender) noexcept {
+  static void startSend(Appender& aAppender) noexcept {
     startSendNoHeader(aAppender);
-    if(appender.isValid()) {
+    if(aAppender.isValid()) {
       if(sConfig->taskRepresentation == LogConfig::TaskRepresentation::cId) {
-        append(appender, *reinterpret_cast<uint8_t*>(appender.getData()), sConfig->taskIdFormat.aBase, sConfig->taskIdFormat.aFill);
-        append(appender, cSpace);
+        append(aAppender, *reinterpret_cast<uint8_t*>(aAppender.getData()), sConfig->taskIdFormat.aBase, sConfig->taskIdFormat.aFill);
+        append(aAppender, cSpace);
       }
       else if(sConfig->taskRepresentation == LogConfig::TaskRepresentation::cName) {
         if(tInterface::isInterrupt()) {
-          append(appender, cIsrTaskName);
+          append(aAppender, cIsrTaskName);
         }
         else {
-          append(appender, tInterface::getCurrentThreadName());
+          append(aAppender, tInterface::getCurrentThreadName());
         }
-        append(appender, cSpace);
+        append(aAppender, cSpace);
       }
       else { // nothing to do
       }
       if(sConfig->tickFormat.aBase != 0) {
-        append(appender, tInterface::getLogTime(), static_cast<uint32_t>(sConfig->tickFormat.aBase), sConfig->tickFormat.aFill);
-        append(appender, cSpace);
+        append(aAppender, tInterface::getLogTime(), static_cast<uint32_t>(sConfig->tickFormat.aBase), sConfig->tickFormat.aFill);
+        append(aAppender, cSpace);
       }
       else { // nothing to do
       }
@@ -732,75 +924,75 @@ private:
     }
   }
 
-  void startSend(Appender& aAppender, LogTopicType aTopic) noexcept {
-    auto found = mRegisteredTopics.find(aTopic);
-    if(found != mRegisteredTopics.end()) {
+  static void startSend(Appender& aAppender, LogTopicType aTopic) noexcept {
+    auto found = sRegisteredTopics.find(aTopic);
+    if(found != sRegisteredTopics.end()) {
       startSend(aAppender);
-      append(appender, found->second);
-      append(appender, cSpace);
+      append(aAppender, found->second);
+      append(aAppender, cSpace);
     }
     else {
       aAppender.invalidate();
     }
   }
 
-  void startSendNoHeader(Appender& aAppender) noexcept {
+  static void startSendNoHeader(Appender& aAppender) noexcept {
     if(tInterface::isInterrupt() && !sConfig->logFromIsr) {
-      appender.invalidate();
+      aAppender.invalidate();
     }
     else { // nothing to do
     }
   }
 
-  void startSendNoHeader(Appender& aAppender, LogTopicType aTopic) noexcept {
-    auto found = mRegisteredTopics.find(aTopic);
-    if(found != mRegisteredTopics.end()) {
+  static void startSendNoHeader(Appender& aAppender, LogTopicType aTopic) noexcept {
+    auto found = sRegisteredTopics.find(aTopic);
+    if(found != sRegisteredTopics.end()) {
       startSendNoHeader(aAppender);
-      append(appender, found->second);
-      append(appender, cSpace);
+      append(aAppender, found->second);
+      append(aAppender, cSpace);
     }
     else {
       aAppender.invalidate();
     }
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, int8_t const aValue) noexcept {
+  static void append(Appender &aAppender, LogFormat const & aFormat, int8_t const aValue) noexcept {
     append(aAppender, static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aFormat.aBase), aFormat.aFill);
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, int16_t const aValue) noexcept {
+  static void append(Appender &aAppender, LogFormat const & aFormat, int16_t const aValue) noexcept {
     append(aAppender, static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aFormat.aBase), aFormat.aFill);
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, int32_t const aValue) noexcept {
+  static void append(Appender &aAppender, LogFormat const & aFormat, int32_t const aValue) noexcept {
     append(aAppender, static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aFormat.aBase), aFormat.aFill);
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, int64_t const aValue) noexcept {
+  static void append(Appender &aAppender, LogFormat const & aFormat, int64_t const aValue) noexcept {
     append(aAppender, aValue, static_cast<int64_t>(aFormat.aBase), aFormat.aFill);
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, uint8_t const aValue) noexcept {
-    append(aAppender, static_cast<IntegerConversionUnigned>(aValue), static_cast<IntegerConversionUnigned>(aFormat.aBase), aFormat.aFill);
+  static void append(Appender &aAppender, LogFormat const & aFormat, uint8_t const aValue) noexcept {
+    append(aAppender, static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aFormat.aBase), aFormat.aFill);
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, uint16_t const aValue) noexcept {
-    append(aAppender, static_cast<IntegerConversionUnigned>(aValue), static_cast<IntegerConversionUnigned>(aFormat.aBase), aFormat.aFill);
+  static void append(Appender &aAppender, LogFormat const & aFormat, uint16_t const aValue) noexcept {
+    append(aAppender, static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aFormat.aBase), aFormat.aFill);
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, uint32_t const aValue) noexcept {
-    append(aAppender, static_cast<IntegerConversionUnigned>(aValue), static_cast<IntegerConversionUnigned>(aFormat.aBase), aFormat.aFill);
+  static void append(Appender &aAppender, LogFormat const & aFormat, uint32_t const aValue) noexcept {
+    append(aAppender, static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aFormat.aBase), aFormat.aFill);
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, uint64_t const aValue) noexcept {
+  static void append(Appender &aAppender, LogFormat const & aFormat, uint64_t const aValue) noexcept {
     append(aAppender, aValue, static_cast<uint64_t>(aFormat.aBase), aFormat.aFill);
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, float const aValue) noexcept {
+  static void append(Appender &aAppender, LogFormat const & aFormat, float const aValue) noexcept {
     append(aAppender, static_cast<double>(aValue), aFormat.aFill);
   }
 
-  void append(Appender &aAppender, LogFormat const & aFormat, double const aValue) noexcept {
+  static void append(Appender &aAppender, LogFormat const & aFormat, double const aValue) noexcept {
     append(aAppender, aValue, aFormat.aFill);
   }
 
@@ -809,7 +1001,7 @@ private:
     append(aAppender, "-=unknown=-");
   }*/
 
-  void append(Appender &aAppender, bool const aBool) noexcept {
+  static void append(Appender &aAppender, bool const aBool) noexcept {
     if(aBool) {
       append(aAppender, "true");
     }
@@ -824,14 +1016,14 @@ private:
   /// possibly other messages will be dropped.
   /// @param ch character to append.
   /// @return true if succeeded, false if truncation occurs or buffer was full.
-  void append(Appender &aAppender, char const aCh) noexcept {
+  static void append(Appender &aAppender, char const aCh) noexcept {
     aAppender.push(aCh);
   }
 
   /// Uses append(char const ch) to send the string character by character.
   /// @param string to send
   /// @return the return aValue of the last append(char const ch) call.
-  void append(Appender &aAppender, char const * const aString) noexcept {
+  static void append(Appender &aAppender, char const * const aString) noexcept {
     char const * pointer = aString;
     if(pointer != nullptr) {
       while(*pointer != 0) {
@@ -843,43 +1035,43 @@ private:
     }
   }
 
-  void append(Appender &aAppender, int8_t const aValue) noexcept {
+  static void append(Appender &aAppender, int8_t const aValue) noexcept {
     append(aAppender, sConfig->int8Format, aValue);
   }
 
-  void append(Appender &aAppender, int16_t const aValue) noexcept {
-    append(aAppender, Config->int16Format, aValue);
+  static void append(Appender &aAppender, int16_t const aValue) noexcept {
+    append(aAppender, sConfig->int16Format, aValue);
   }
 
-  void append(Appender &aAppender, int32_t const aValue) noexcept {
-    append(aAppender, Config->int32Format, aValue);
+  static void append(Appender &aAppender, int32_t const aValue) noexcept {
+    append(aAppender, sConfig->int32Format, aValue);
   }
 
-  void append(Appender &aAppender, int64_t const aValue) noexcept {
-    append(aAppender, Config->int64Format, aValue);
+  static void append(Appender &aAppender, int64_t const aValue) noexcept {
+    append(aAppender, sConfig->int64Format, aValue);
   }
 
-  void append(Appender &aAppender, uint8_t const aValue) noexcept {
+  static void append(Appender &aAppender, uint8_t const aValue) noexcept {
     append(aAppender, sConfig->uint8Format, aValue);
   }
 
-  void append(Appender &aAppender, uint16_t const aValue) noexcept {
-    append(aAppender, Config->uint16Format, aValue);
+  static void append(Appender &aAppender, uint16_t const aValue) noexcept {
+    append(aAppender, sConfig->uint16Format, aValue);
   }
 
-  void append(Appender &aAppender, uint32_t const aValue) noexcept {
-    append(aAppender, Config->uint32Format, aValue);
+  static void append(Appender &aAppender, uint32_t const aValue) noexcept {
+    append(aAppender, sConfig->uint32Format, aValue);
   }
 
-  void append(Appender &aAppender, uint64_t const aValue) noexcept {
-    append(aAppender, Config->uint64Format, aValue);
+  static void append(Appender &aAppender, uint64_t const aValue) noexcept {
+    append(aAppender, sConfig->uint64Format, aValue);
   }
 
-  void append(Appender &aAppender, float const aValue) noexcept {
+  static void append(Appender &aAppender, float const aValue) noexcept {
     append(aAppender, static_cast<double>(aValue), sConfig->floatFormat.aFill);
   }
 
-  void append(Appender &aAppender, double const aValue) noexcept {
+  static void append(Appender &aAppender, double const aValue) noexcept {
     append(aAppender, aValue, sConfig->doubleFormat.aFill);
   }
 
@@ -894,7 +1086,7 @@ private:
   /// filled using cNumericFill.
   /// @return the return aValue of the last append(char const ch) call.
   template<typename tValueType>
-  void append(Appender &aAppender, tValueType const aValue, tValueType const aBase, uint8_t const aFill) noexcept {
+  static void append(Appender &aAppender, tValueType const aValue, tValueType const aBase, uint8_t const aFill) noexcept {
     tValueType tmpValue = aValue;
     uint8_t tmpFill = aFill;
     if((aBase != NumericSystem::cBinary) && (aBase != NumericSystem::cDecimal) && (aBase != NumericSystem::cHexadecimal)) {
@@ -957,7 +1149,7 @@ private:
     aAppender.push(tmpBuffer[0]);
   }
 
-  void append(Appender& aAppender, double const aValue, uint8_t const aDigitsNeeded) noexcept {
+  static void append(Appender& aAppender, double const aValue, uint8_t const aDigitsNeeded) noexcept {
     if(std::isnan(aValue)) {
       append(aAppender, cNan);
       return;

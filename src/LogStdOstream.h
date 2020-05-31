@@ -80,9 +80,9 @@ namespace nowtech {
     /// Sends the chunk contents immediately.
     static void push(char const * const aChunkStart, bool const) noexcept {
       LogSizeType length;
-      char buffer[mChunkSize];
+      char buffer[cChunkSize];
       bool newLine = false;
-      for(length = 0u; length < mChunkSize - 1u; ++length) {
+      for(length = 0u; length < cChunkSize - 1u; ++length) {
         buffer[length] = aChunkStart[length + 1u];
         if(aChunkStart[length + 1] == '\r') {
           newLine = true;

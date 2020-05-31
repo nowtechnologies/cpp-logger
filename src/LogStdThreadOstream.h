@@ -60,7 +60,7 @@ private:
   };
 
   /// Uses moodycamel::ConcurrentQueue to simulate a FreeRTOS queue.
-  static class FreeRtosQueue final : public BanCopyMove {
+  static class FreeRtosQueue final {
     boost::lockfree::queue<char *> mQueue;
     boost::lockfree::queue<char *> mFreeList;
     std::mutex                     mMutex;
@@ -96,7 +96,7 @@ private:
         success = mFreeList.pop(payload);
         if(success) {
           std::copy(aChunkStart, aChunkStart + mBlockSize, payload);
-          mQueue->bounded_push(payload); // this should always succeed here
+          mQueue.bounded_push(payload); // this should always succeed here
           mConditionVariable.notify_one();
         }
         else {
@@ -108,12 +108,12 @@ private:
     bool receive(char * const aChunkStart, uint32_t const aPauseLength) noexcept {
       bool result;
       // Safe to call empty because there will be only one consumer.
-      if(mQueue->empty() && mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mPauseLength)) == std::cv_status::timeout) {
+      if(mQueue.empty() && mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mPauseLength)) == std::cv_status::timeout) {
         result = false;
       }
       else {
         char *payload;
-        result = mQueue->pop(payload);
+        result = mQueue.pop(payload);
         if(result) {
           std::copy(payload, payload + mBlockSize, aChunkStart);
           mFreeList.bounded_push(payload); // this should always succeed here
@@ -127,37 +127,35 @@ private:
 
   /// Used to force transmission of partially filled buffer in a defined
   /// period of time.
-  static class FreeRtosTimer final : public BanCopyMove {
+  static class FreeRtosTimer final {
     uint32_t                     mTimeout;
     std::function<void()>        mLambda;
     std::mutex                   mMutex;
     std::unique_lock<std::mutex> mLock;
     std::condition_variable      mConditionVariable;
     std::thread                  mThread;
-    std::atomic<bool>            mKeepRunning;
-    std::atomic<bool>            mAlarmed;
+    std::atomic<bool>            mKeepRunning = true;
+    std::atomic<bool>            mAlarmed = false;
 
   public:
     FreeRtosTimer(uint32_t const aTimeout, std::function<void()> aLambda)
     : mTimeout(aTimeout)
     , mLambda(aLambda) 
     , mLock(mMutex)
-    , mThread(&nowtech::LogStdThreadOstream::FreeRtosTimer::run, this) {
-      mKeepRunning.store(true);
-      mAlarmed.store(false);
+    , mThread(&LogStdThreadOstream::FreeRtosTimer::run, this) {
     }
 
     ~FreeRtosTimer() noexcept {
-      mKeepRunning.store(false);
+      mKeepRunning = false;
       mConditionVariable.notify_one();
       mThread.join();
     }
   
     void run() noexcept {
-      while(mKeepRunning.load()) {
-        if(mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mTimeout)) == std::cv_status::timeout && mAlarmed.load()) {
+      while(mKeepRunning) {
+        if(mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mTimeout)) == std::cv_status::timeout && mAlarmed) {
           mLambda();
-          mAlarmed.store(false);
+          mAlarmed = false;
         }
         else {
         }
@@ -165,7 +163,7 @@ private:
     }
 
     void start() noexcept {
-      mAlarmed.store(true);
+      mAlarmed = true;
       mConditionVariable.notify_one();
     }
   } *mRefreshTimer;
@@ -191,6 +189,8 @@ private:
   /// was designed for FreeRTOS, and we currently have no resource to redesign it.
   inline static std::recursive_mutex         mApiMutex;
 
+  LogStdThreadOstream() = delete;
+
 public:
   // Must be called before Log::init()
   static void init(std::ostream &aOutput) noexcept {
@@ -200,8 +200,8 @@ public:
   // Only Log::init may call this
   static void init(LogConfig const &aConfig, std::function<void()> aTransmitterThreadFunction) {
     mPauseLength = aConfig.pauseLength;
-    mQueue = new FreeRTosQueue(aConfig.queueLength, tChunkSize)
-    mRefreshTimer = new FreeRtosTimer(aConfig.refreshPeriod, [this]{this->refreshNeeded();})
+    mQueue = new FreeRtosQueue(aConfig.queueLength, tChunkSize);
+    mRefreshTimer = new FreeRtosTimer(aConfig.refreshPeriod, []{refreshNeeded();});
     mTransmitterThread = new std::thread(aTransmitterThreadFunction);
   }
 
@@ -245,7 +245,7 @@ public:
       result = found->second.name.c_str();
     }
     else {
-      result = Log::cUnknownApplicationName;
+      result = Log<typename tAppInterface, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>::cUnknownApplicationName;
     }
     return result;
   }
@@ -264,8 +264,12 @@ public:
   }
 
   /// Returns the std::chrono::steady_clock tick count converted into ms and truncated to 32 bits.
-  static uint32_t getLogTime() const noexcept {
+  static uint32_t getLogTime() noexcept {
     return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+  }
+
+  static bool isInterrupt() noexcept {
+    return false;
   }
 
   /// Enqueues the chunks, possibly blocking if the queue is full.
@@ -274,7 +278,7 @@ public:
   }
 
   /// Removes the oldest chunk from the queue.
-  static bool pop(char * const aChunkStart) noexcept {
+  static bool fetch(char * const aChunkStart) noexcept {
     return mQueue->receive(aChunkStart, mPauseLength);
   }
 

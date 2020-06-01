@@ -5,7 +5,7 @@
       "type": "shell",
       "label": "g++ build test-stdthreadostream",
       "command": "/usr/bin/g++",
-      "args": ["-ggdb", "test/test-stdthreadostream.cpp", "-std=c++17", "-I", "src/", "-lpthread",  "-o", "${workspaceFolder}/test-stdthreadostream"],
+      "args": ["-ggdb", "test/test-stdthreadostream.cpp", "-Wall", "-Wpedantic", "-Wextra", "-std=c++17", "-I", "src/", "-D_GLIBCXX_DEBUG", "-lpthread",  "-o", "${workspaceFolder}/test-stdthreadostream"],
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -19,7 +19,7 @@
       "type": "shell",
       "label": "g++ build test-stdostream",
       "command": "/usr/bin/g++",
-      "args": ["-ggdb", "test/test-stdostream.cpp", "-std=c++17", "-I", "src/", "-lpthread",  "-o", "${workspaceFolder}/test-stdostream"],
+      "args": ["-ggdb", "test/test-stdostream.cpp", "-Wall", "-Wpedantic", "-Wextra", "-std=c++17", "-I", "src/", "-D_GLIBCXX_DEBUG", "-lpthread",  "-o", "${workspaceFolder}/test-stdostream"],
       "options": {
         "cwd": "${workspaceFolder}"
       },

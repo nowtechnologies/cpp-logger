@@ -113,25 +113,37 @@ int main() {
 
   Log::registerCurrentTask("main");
 
+  int i = 33;
+  Log::send(i);
+
+  Log::send("send*");
+  Log::send(LogTopics::system, LC::cX16, uint64);
+  Log::send(uint64);
+  Log::sendNoHeader(LogTopics::system, LC::cX16, uint64);
+  Log::sendNoHeader(uint64);
+
+  Log::send("<<");
   Log::i(LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::n(LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::i() << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::n() << "uint64: " << uint64 << " int64: " << int64 << Log::end;
 
+  Log::i(LogTopics::system) << "uint64: " << LC::cX16 << uint64 << " int64: " << LC::cX16 << int64 << Log::end;
+  Log::n(LogTopics::system) << "uint64: " << LC::cX16 << uint64 << " int64: " << LC::cX16 << int64 << Log::end;
+  Log::i() << "uint64: " << LC::cX16 << uint64 << " int64: " << LC::cX16 << int64 << Log::end;
+  Log::n() << "uint64: " << LC::cX16 << uint64 << " int64: " << LC::cX16 << int64 << Log::end;
+
   uint8_t const uint8 = 42;
   int8_t const int8 = -42;
 
-  try {
-    Log::i(LogTopics::system) << uint8 << ' ' << int8 << Log::end;
-    Log::i(LogTopics::system) << LC::cX2 << uint8 << ' ' << LC::cD3 << int8 << Log::end;
-    Log::i() << uint8 << ' ' << int8 << Log::end;
-    Log::i() << LC::cX2 << uint8 << int8 << Log::end;
-    Log::i() << Log::end;
-  }
-  catch(std::exception &e) {
-    Log::i() << "Exception: " << e.what() << Log::end;
-  }
+  Log::send("small");
+  Log::i(LogTopics::system) << uint8 << ' ' << int8 << Log::end;
+  Log::i(LogTopics::system) << LC::cX2 << uint8 << ' ' << LC::cD3 << int8 << Log::end;
+  Log::i() << uint8 << ' ' << int8 << Log::end;
+  Log::i() << LC::cX2 << uint8 << int8 << Log::end;
+  Log::i() << Log::end;
 
+  Log::send("types");
   Log::i() << "int8: " << static_cast<int8_t>(123) << Log::end;
   Log::i() << "int16: " << static_cast<int16_t>(123) << Log::end;
   Log::i() << "int32: " << static_cast<int32_t>(123) << Log::end;
@@ -142,10 +154,13 @@ int main() {
   Log::i() << "uint64: " << static_cast<uint64_t>(123) << Log::end;
   Log::i() << "float: " << 1.234567890f << Log::end;
   Log::i() << "double: " << -1.234567890 << Log::end;
+  Log::i() << "long double: " << -1.234567890l << Log::end;
   Log::i() << "float: " << -123.4567890f << Log::end;
   Log::i() << "double: " << 123.4567890 << Log::end;
+  Log::i() << "long double: " << 123.4567890l << Log::end;
   Log::i() << "float: " << -0.01234567890f << Log::end;
   Log::i() << "double: " << 0.01234567890 << Log::end;
+  Log::i() << "long double: " << 0.01234567890l << Log::end;
   Log::i() << "bool:" << true << Log::end;
   Log::i() << "bool:" << false << Log::end;
 

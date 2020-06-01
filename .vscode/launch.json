@@ -8,7 +8,7 @@
       "name": "(gdb) Launch",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/test/t",
+      "program": "${workspaceFolder}/test-stdthreadostream",
       "args": [],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",

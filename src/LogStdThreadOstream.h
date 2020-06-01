@@ -39,7 +39,7 @@
 namespace nowtech::log {
 
 template<typename tLogSizeType, bool tBlocks = false, tLogSizeType tChunkSize = 8u>
-class LogStdThreadOstream {
+class LogStdThreadOstream : public LogInterfaceBase {
 public:
   typedef tLogSizeType LogSizeType;
   static constexpr tLogSizeType cChunkSize = tChunkSize;
@@ -60,8 +60,8 @@ private:
   };
 
   /// Uses moodycamel::ConcurrentQueue to simulate a FreeRTOS queue.
-  static class FreeRtosQueue final {
-    boost::lockfree::queue<char *> mQueue;
+  inline static class FreeRtosQueue final {
+    boost::lockfree::queue<char *> sQueue;
     boost::lockfree::queue<char *> mFreeList;
     std::mutex                     mMutex;
     std::unique_lock<std::mutex>   mLock;
@@ -73,7 +73,7 @@ private:
   public:
     /// First implementation, we assume we have plenty of memory.
     FreeRtosQueue(size_t const aBlockCount, size_t const aBlockSize) noexcept
-      : mQueue(aBlockCount)
+      : sQueue(aBlockCount)
       , mFreeList(aBlockCount)
       , mLock(mMutex)
       , mBlockSize(aBlockSize) 
@@ -96,7 +96,7 @@ private:
         success = mFreeList.pop(payload);
         if(success) {
           std::copy(aChunkStart, aChunkStart + mBlockSize, payload);
-          mQueue.bounded_push(payload); // this should always succeed here
+          sQueue.bounded_push(payload); // this should always succeed here
           mConditionVariable.notify_one();
         }
         else {
@@ -108,12 +108,12 @@ private:
     bool receive(char * const aChunkStart, uint32_t const aPauseLength) noexcept {
       bool result;
       // Safe to call empty because there will be only one consumer.
-      if(mQueue.empty() && mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mPauseLength)) == std::cv_status::timeout) {
+      if(sQueue.empty() && mConditionVariable.wait_for(mLock, std::chrono::milliseconds(aPauseLength)) == std::cv_status::timeout) {
         result = false;
       }
       else {
         char *payload;
-        result = mQueue.pop(payload);
+        result = sQueue.pop(payload);
         if(result) {
           std::copy(payload, payload + mBlockSize, aChunkStart);
           mFreeList.bounded_push(payload); // this should always succeed here
@@ -123,11 +123,11 @@ private:
       }
       return result;
     }
-  } *mQueue;
+  } *sQueue;
 
   /// Used to force transmission of partially filled buffer in a defined
   /// period of time.
-  static class FreeRtosTimer final {
+  inline static class FreeRtosTimer final {
     uint32_t                     mTimeout;
     std::function<void()>        mLambda;
     std::mutex                   mMutex;
@@ -166,51 +166,54 @@ private:
       mAlarmed = true;
       mConditionVariable.notify_one();
     }
-  } *mRefreshTimer;
+  } *sRefreshTimer;
 
   /// Length of a pause in ms during waiting for transmission.
-  inline static uint32_t mPauseLength;
+  inline static uint32_t sPauseLength;
 
   /// The output stream to use.
-  inline static std::ostream *mOutput;
+  inline static std::ostream *sOutput;
 
   /// The transmitter task.
-  inline static std::thread *mTransmitterThread;
+  inline static std::thread *sTransmitterThread;
 
-  inline static std::map<std::thread::id, NameId> mTaskNamesIds;
+  inline static std::map<std::thread::id, NameId> sTaskNamesIds;
 
-  inline static uint32_t mNextGivenTaskId = cInvalidGivenTaskId + 1u; // TODO consider
+  inline static uint32_t sNextGivenTaskId = cInvalidGivenTaskId + 1u; // TODO consider
 
   /// True if the partially filled buffer should be sent. This is
   /// defined here because OS-specific functionality is here.
-  inline static std::atomic<bool> *mRefreshNeeded;
+  inline static std::atomic<bool> *sRefreshNeeded;
 
   /// We use std::recursive_mutex here (banned by HIC++4), because the OsInterface API
   /// was designed for FreeRTOS, and we currently have no resource to redesign it.
-  inline static std::recursive_mutex         mApiMutex;
+  inline static std::recursive_mutex         sApiMutex;
 
   LogStdThreadOstream() = delete;
 
 public:
   // Must be called before Log::init()
   static void init(std::ostream &aOutput) noexcept {
-    mOutput = &aOutput;
+    sOutput = &aOutput;
   }
 
   // Only Log::init may call this
   static void init(LogConfig const &aConfig, std::function<void()> aTransmitterThreadFunction) {
-    mPauseLength = aConfig.pauseLength;
-    mQueue = new FreeRtosQueue(aConfig.queueLength, tChunkSize);
-    mRefreshTimer = new FreeRtosTimer(aConfig.refreshPeriod, []{refreshNeeded();});
-    mTransmitterThread = new std::thread(aTransmitterThreadFunction);
+    sPauseLength = aConfig.pauseLength;
+    sQueue = new FreeRtosQueue(aConfig.queueLength, tChunkSize);
+    sRefreshTimer = new FreeRtosTimer(aConfig.refreshPeriod, []{refreshNeeded();});
+    sTransmitterThread = new std::thread(aTransmitterThreadFunction);
+  }
+
+  static void finishedTransmitterThread() noexcept { // nothing to do
   }
 
   static void done() {
-    mTransmitterThread->join();
-    delete mTransmitterThread;
-    delete mQueue;
-    delete mRefreshTimer;
-    mOutput->flush();
+    sTransmitterThread->join();
+    delete sTransmitterThread;
+    delete sQueue;
+    delete sRefreshTimer;
+    sOutput->flush();
   }
 
   /// Registers the given name and an artificial ID in a local map.
@@ -218,9 +221,9 @@ public:
   /// void Log::registerCurrentTask(char const * const aTaskName) may call it only.
   /// @param aTaskName Task name to register.
   static void registerThreadName(char const * const aTaskName) noexcept {
-    NameId item { std::string(aTaskName), mNextGivenTaskId };
-    ++mNextGivenTaskId;
-    mTaskNamesIds.insert(std::pair<std::thread::id, NameId>(std::this_thread::get_id(), item));
+    NameId item { std::string(aTaskName), sNextGivenTaskId };
+    ++sNextGivenTaskId;
+    sTaskNamesIds.insert(std::pair<std::thread::id, NameId>(std::this_thread::get_id(), item));
   }
 
   /// Returns the task name. This is a dummy and inefficient implementation,
@@ -228,7 +231,7 @@ public:
   /// Note, the returned pointer is valid only as long as this object lives.
   static char const * getThreadName(uint32_t const aHandle) noexcept {
     char const * result = "";
-    for(auto const &iterator : mTaskNamesIds) {
+    for(auto const &iterator : sTaskNamesIds) {
       if(iterator.second.id == aHandle) {
         result = iterator.second.name.c_str();
       }
@@ -240,12 +243,12 @@ public:
   /// Returns the current task name.
   static char const * getCurrentThreadName() noexcept {
     char const *result;
-    auto found = mTaskNamesIds.find(std::this_thread::get_id());
-    if(found != mTaskNamesIds.end()) {
+    auto found = sTaskNamesIds.find(std::this_thread::get_id());
+    if(found != sTaskNamesIds.end()) {
       result = found->second.name.c_str();
     }
     else {
-      result = Log<typename tAppInterface, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>::cUnknownApplicationName;
+      result = cUnknownApplicationName;
     }
     return result;
   }
@@ -253,8 +256,8 @@ public:
   /// Returns an artificial thread ID for registered threads, cInvalidGivenTaskId otherwise;
   static uint32_t getCurrentThreadId() noexcept {
     uint32_t result;
-    auto found = mTaskNamesIds.find(std::this_thread::get_id());
-    if(found != mTaskNamesIds.end()) {
+    auto found = sTaskNamesIds.find(std::this_thread::get_id());
+    if(found != sTaskNamesIds.end()) {
       result = found->second.id;
     }
     else {
@@ -274,17 +277,17 @@ public:
 
   /// Enqueues the chunks, possibly blocking if the queue is full.
   static void push(char const * const aChunkStart) noexcept {
-    mQueue->send(aChunkStart);
+    sQueue->send(aChunkStart);
   }
 
   /// Removes the oldest chunk from the queue.
   static bool fetch(char * const aChunkStart) noexcept {
-    return mQueue->receive(aChunkStart, mPauseLength);
+    return sQueue->receive(aChunkStart, sPauseLength);
   }
 
   /// Pauses execution for the period given in the constructor.
   static void pause() noexcept {
-    std::this_thread::sleep_for(std::chrono::milliseconds(mPauseLength));
+    std::this_thread::sleep_for(std::chrono::milliseconds(sPauseLength));
   }
 
   /// Transmits the data using the serial descriptor given in the constructor.
@@ -292,29 +295,29 @@ public:
   /// @param length length of data
   /// @param aProgressFlag address of flag to be set on transmission end.
   static void transmit(const char * const aBuffer, LogSizeType const aLength, std::atomic<bool> *aProgressFlag) noexcept {
-    mOutput->write(aBuffer, aLength);
+    sOutput->write(aBuffer, aLength);
     aProgressFlag->store(false);
   }
 
   /// Starts the timer after which a partially filled buffer should be sent.
   static void startRefreshTimer(std::atomic<bool> *aRefreshFlag) noexcept {
-    mRefreshNeeded = aRefreshFlag;
-    mRefreshTimer->start();
+    sRefreshNeeded = aRefreshFlag;
+    sRefreshTimer->start();
   }
 
   /// Sets the flag.
-  void refreshNeeded() noexcept {
-    mRefreshNeeded->store(true);
+  static void refreshNeeded() noexcept {
+    sRefreshNeeded->store(true);
   }
 
   /// Calls az OS-specific lock to acquire a critical section, if implemented
   static void lock() noexcept {
-    mApiMutex.lock();
+    sApiMutex.lock();
   }
 
   /// Calls az OS-specific lock to release critical section, if implemented
   static void unlock() noexcept {
-    mApiMutex.unlock();
+    sApiMutex.unlock();
   }
 };
 

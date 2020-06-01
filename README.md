@@ -223,6 +223,7 @@ allowRegistrationLog|bool|true          |If true, task registration will be sent
 `uint64Format`|see LogFormat above|`cDefault`|Applies to numeric parameters of this type without preceding format parameter.
 `floatFormat`|see LogFormat above|`cD5`|Applies to numeric parameters of this type without preceding format parameter.
 `doubleFormat`|see LogFormat above|`cD8`|Applies to numeric parameters of this type without preceding format parameter.
+`longDoubleFormat`|see LogFormat above|`cD16`|Applies to numeric parameters of this type without preceding format parameter.
 `alignSigned`|bool      |false          |If true, positive numbers will be prepended with a space to let them align negatives.
 
 ### Invocation
@@ -313,6 +314,7 @@ Type        |Printed value          |If it can be preceded by a LogFormat parame
 `int64_t`   |formatted numeric value|yes
 `float`     |formatted numeric value in exponential form|yes
 `double`    |formatted numeric value in exponential form|yes
+`long double` |formatted numeric value in exponential form|yes
 anything else, like pure `int`|`-=unknown=-`|no
 
 TODO rewrite The logger was initially designed for 32-bit embedded environment with possible few binary-to-printed

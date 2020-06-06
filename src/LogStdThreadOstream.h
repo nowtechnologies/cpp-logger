@@ -67,21 +67,19 @@ private:
     std::unique_lock<std::mutex>   mLock;
     std::condition_variable        mConditionVariable;
 
-    size_t const mBlockSize;
     char        *mBuffer;
   
   public:
     /// First implementation, we assume we have plenty of memory.
-    FreeRtosQueue(size_t const aBlockCount, size_t const aBlockSize) noexcept
+    FreeRtosQueue(size_t const aBlockCount) noexcept
       : sQueue(aBlockCount)
       , mFreeList(aBlockCount)
       , mLock(mMutex)
-      , mBlockSize(aBlockSize) 
-      , mBuffer(new char[aBlockCount * aBlockSize]) {
+      , mBuffer(new char[aBlockCount * cChunkSize]) {
       char *ptr = mBuffer;
       for(size_t i = 0u; i < aBlockCount; ++i) {
         mFreeList.bounded_push(ptr);
-        ptr += aBlockSize;
+        ptr += cChunkSize;
       }
     }
 
@@ -95,7 +93,7 @@ private:
         char *payload;
         success = mFreeList.pop(payload);
         if(success) {
-          std::copy(aChunkStart, aChunkStart + mBlockSize, payload);
+          std::copy(aChunkStart, aChunkStart + cChunkSize, payload);
           sQueue.bounded_push(payload); // this should always succeed here
           mConditionVariable.notify_one();
         }
@@ -115,7 +113,7 @@ private:
         char *payload;
         result = sQueue.pop(payload);
         if(result) {
-          std::copy(payload, payload + mBlockSize, aChunkStart);
+          std::copy(payload, payload + cChunkSize, aChunkStart);
           mFreeList.bounded_push(payload); // this should always succeed here
         }
         else { // nothing to do
@@ -200,7 +198,7 @@ public:
   // Only Log::init may call this
   static void init(LogConfig const &aConfig, std::function<void()> aTransmitterThreadFunction) {
     sPauseLength = aConfig.pauseLength;
-    sQueue = new FreeRtosQueue(aConfig.queueLength, tChunkSize);
+    sQueue = new FreeRtosQueue(aConfig.queueLength);
     sRefreshTimer = new FreeRtosTimer(aConfig.refreshPeriod, []{refreshNeeded();});
     sTransmitterThread = new std::thread(aTransmitterThreadFunction);
   }

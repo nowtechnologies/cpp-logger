@@ -293,6 +293,10 @@ private:
     char mChunk[cChunkSize];
 
   public:
+    Appender() noexcept : mIndex(1u) {
+      mChunk[0u] = cInvalidTaskId;
+    }
+
     Appender(TaskIdType const aTaskId) noexcept : mIndex(1u) {
       mChunk[0u] = aTaskId;
     }
@@ -667,7 +671,7 @@ public:
           append(appender, cRegisteredTask);
           append(appender, tInterface::getThreadName(taskHandle));
           append(appender, cSpace);
-          append(appender, static_cast<uint16_t>(sNextTaskId));
+          append(appender, LogConfig::cD3, static_cast<uint16_t>(sNextTaskId));
           appender.flush();
         }
         else { // nothing to do

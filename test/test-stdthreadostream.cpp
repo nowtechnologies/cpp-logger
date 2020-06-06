@@ -47,6 +47,36 @@ namespace LogTopics {
 nowtech::log::LogTopicInstance system;
 }
 
+void* operator new(std::size_t aCount) {
+  std::cout << "::new(" << aCount << ")\n";
+  return malloc(aCount);
+}
+
+void* operator new[]( std::size_t aCount ) {
+  std::cout << "::new[](" << aCount << ")\n";
+  return malloc(aCount);
+}
+
+void operator delete(void* aPtr) {
+  std::cout << "::delete(void*)\n";
+  free(aPtr);
+}
+
+void operator delete[](void* aPtr) {
+  std::cout << "::delete[](void*)\n";
+  free(aPtr);
+}
+
+void operator delete(void* aPtr, size_t) {
+  std::cout << "::delete(void*, size_t)\n";
+  free(aPtr);
+}
+
+void operator delete[](void* aPtr, size_t) {
+  std::cout << "::delete[](void*, size_t)\n";
+  free(aPtr);
+}
+
 class AppInterface final {
 private:
   inline static char cExceptionTexts[static_cast<size_t>(nowtech::log::Exception::cCount)][32] = {
@@ -60,22 +90,26 @@ public:
 
   template<typename tClass, typename ...tParameters>
   static tClass* _new(tParameters... aParameters) {
-    return new tClass(aParameters...);
+  std::cout << "_new\n";
+    return ::new tClass(aParameters...);
   }
 
   template<typename tClass>
   static tClass* _newArray(uint32_t const aCount) {
-    return new tClass(aCount);
+  std::cout << "_newArray(" << aCount << ")\n";
+    return ::new tClass[aCount];
   }
 
   template<typename tClass>
   static void _delete(tClass* aPointer) {
-    delete aPointer;
+  std::cout << "_delete\n";
+    ::delete aPointer;
   }
 
   template<typename tClass>
   static void _deleteArray(tClass* aPointer) {
-    delete[] aPointer;
+  std::cout << "_deleteArray\n";
+    ::delete[] aPointer;
   }
 };
 
@@ -164,12 +198,12 @@ int main() {
   Log::i() << "bool:" << true << Log::end;
   Log::i() << "bool:" << false << Log::end;
 
-  for(int32_t i = 0; i < threadCount; ++i) {
+/*  for(int32_t i = 0; i < threadCount; ++i) {
     threads[i] = std::thread(delayedLog, i);
   }
   for(int32_t i = 0; i < threadCount; ++i) {
     threads[i].join();
-  }
+  }*/
   return 0;
 }
 

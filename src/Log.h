@@ -636,7 +636,7 @@ public:
     sShiftChainingAppenders = tAppInterface::template _newArray<Appender>(cMaxTaskIdCount);
   }
 
-  /// Does nothing, because this object is not intended to be destroyed.
+  // TODO note in docs about init and done sequence
   static void done() {
     sKeepRunning = false;
     tInterface::done();

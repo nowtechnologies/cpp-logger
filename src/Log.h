@@ -282,10 +282,10 @@ private:
   inline static std::atomic<LogTopicType> sNextFreeTopic;
 
   /// Map used to turn OS-specific task IDs into the artificial counterparts.
-  inline static std::map<uint32_t, TaskIdType> sTaskIds;
+  inline static std::map<uint32_t, TaskIdType> sTaskIds; // TODO eliminate
 
   /// Registry to check calls like Log::send(nowtech::LogTopicType::cSystem, "stuff to log")
-  inline static std::map<LogTopicType, char const *> sRegisteredTopics;
+  inline static std::map<LogTopicType, char const *> sRegisteredTopics; // TODO eliminate
 
   class Appender final {
   private:
@@ -640,7 +640,7 @@ public:
   static void done() {
     sKeepRunning = false;
     tInterface::done();
-    tAppInterface::template deleteArray<Appender>(sShiftChainingAppenders);
+    tAppInterface::template _deleteArray<Appender>(sShiftChainingAppenders);
   }
 
   /// Registers the current task if not already present. It can register

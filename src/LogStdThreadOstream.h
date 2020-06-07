@@ -166,26 +166,23 @@ private:
     }
   } *sRefreshTimer;
 
-  /// Length of a pause in ms during waiting for transmission.
   inline static uint32_t sPauseLength;
-
-  /// The output stream to use.
-  inline static std::ostream *sOutput;
-
-  /// The transmitter task.
-  inline static std::thread *sTransmitterThread;
-
-  inline static std::map<std::thread::id, NameId> sTaskNamesIds;
-
+  inline static std::ostream* sOutput;
+  inline static std::thread* sTransmitterThread;
+  inline static std::map<std::thread::id, NameId>* sTaskNamesIds;
   inline static uint32_t sNextGivenTaskId = cInvalidGivenTaskId + 1u; // TODO consider
 
   /// True if the partially filled buffer should be sent. This is
   /// defined here because OS-specific functionality is here.
-  inline static std::atomic<bool> *sRefreshNeeded;
+  inline static std::atomic<bool>*            sRefreshNeeded;
 
   /// We use std::recursive_mutex here (banned by HIC++4), because the OsInterface API
   /// was designed for FreeRTOS, and we currently have no resource to redesign it.
-  inline static std::recursive_mutex         sApiMutex;
+  inline static std::recursive_mutex          sApiMutex;
+  inline static std::mutex                    sMutex;
+  inline static std::unique_lock<std::mutex>* sLock;
+  inline static std::condition_variable       sConditionVariable;
+  inline static std::atomic<bool>             sCondition = false;
 
   LogStdThreadOstream() = delete;
 
@@ -197,20 +194,28 @@ public:
 
   // Only Log::init may call this
   static void init(LogConfig const &aConfig, std::function<void()> aTransmitterThreadFunction) {
+    sTaskNamesIds = new std::map<std::thread::id, NameId>();
     sPauseLength = aConfig.pauseLength;
     sQueue = new FreeRtosQueue(aConfig.queueLength);
     sRefreshTimer = new FreeRtosTimer(aConfig.refreshPeriod, []{refreshNeeded();});
+    sLock = new std::unique_lock<std::mutex>(sMutex);
     sTransmitterThread = new std::thread(aTransmitterThreadFunction);
   }
 
   static void finishedTransmitterThread() noexcept { // nothing to do
+    std::lock_guard<std::mutex> lock(sMutex);
+    sCondition = true;
+    sConditionVariable.notify_one();
   }
 
   static void done() {
+    sConditionVariable.wait(*sLock, [](){ return sCondition.load(); });
     sTransmitterThread->join();
+    delete sLock;
     delete sTransmitterThread;
     delete sQueue;
     delete sRefreshTimer;
+    delete sTaskNamesIds;
     sOutput->flush();
   }
 
@@ -221,7 +226,7 @@ public:
   static void registerThreadName(char const * const aTaskName) noexcept {
     NameId item { std::string(aTaskName), sNextGivenTaskId };
     ++sNextGivenTaskId;
-    sTaskNamesIds.insert(std::pair<std::thread::id, NameId>(std::this_thread::get_id(), item));
+    sTaskNamesIds->insert(std::pair<std::thread::id, NameId>(std::this_thread::get_id(), item));
   }
 
   /// Returns the task name. This is a dummy and inefficient implementation,
@@ -229,7 +234,7 @@ public:
   /// Note, the returned pointer is valid only as long as this object lives.
   static char const * getThreadName(uint32_t const aHandle) noexcept {
     char const * result = "";
-    for(auto const &iterator : sTaskNamesIds) {
+    for(auto const &iterator : *sTaskNamesIds) {
       if(iterator.second.id == aHandle) {
         result = iterator.second.name.c_str();
       }
@@ -241,8 +246,8 @@ public:
   /// Returns the current task name.
   static char const * getCurrentThreadName() noexcept {
     char const *result;
-    auto found = sTaskNamesIds.find(std::this_thread::get_id());
-    if(found != sTaskNamesIds.end()) {
+    auto found = sTaskNamesIds->find(std::this_thread::get_id());
+    if(found != sTaskNamesIds->end()) {
       result = found->second.name.c_str();
     }
     else {
@@ -254,8 +259,8 @@ public:
   /// Returns an artificial thread ID for registered threads, cInvalidGivenTaskId otherwise;
   static uint32_t getCurrentThreadId() noexcept {
     uint32_t result;
-    auto found = sTaskNamesIds.find(std::this_thread::get_id());
-    if(found != sTaskNamesIds.end()) {
+    auto found = sTaskNamesIds->find(std::this_thread::get_id());
+    if(found != sTaskNamesIds->end()) {
       result = found->second.id;
     }
     else {

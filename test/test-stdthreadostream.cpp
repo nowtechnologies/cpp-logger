@@ -47,7 +47,7 @@ namespace LogTopics {
 nowtech::log::LogTopicInstance system;
 }
 
-void* operator new(std::size_t aCount) {
+/*void* operator new(std::size_t aCount) {
   std::cout << "::new(" << aCount << ")\n";
   return malloc(aCount);
 }
@@ -75,7 +75,7 @@ void operator delete(void* aPtr, size_t) {
 void operator delete[](void* aPtr, size_t) {
   std::cout << "::delete[](void*, size_t)\n";
   free(aPtr);
-}
+}*/
 
 class AppInterface final {
 private:
@@ -204,6 +204,7 @@ int main() {
   for(int32_t i = 0; i < threadCount; ++i) {
     threads[i].join();
   }*/
+  Log::done();
   return 0;
 }
 

@@ -180,7 +180,6 @@ private:
   /// was designed for FreeRTOS, and we currently have no resource to redesign it.
   inline static std::recursive_mutex          sApiMutex;
   inline static std::mutex                    sMutex;
-  inline static std::unique_lock<std::mutex>* sLock;
   inline static std::condition_variable       sConditionVariable;
   inline static std::atomic<bool>             sCondition = false;
 
@@ -198,7 +197,6 @@ public:
     sPauseLength = aConfig.pauseLength;
     sQueue = new FreeRtosQueue(aConfig.queueLength);
     sRefreshTimer = new FreeRtosTimer(aConfig.refreshPeriod, []{refreshNeeded();});
-    sLock = new std::unique_lock<std::mutex>(sMutex);
     sTransmitterThread = new std::thread(aTransmitterThreadFunction);
   }
 
@@ -209,9 +207,9 @@ public:
   }
 
   static void done() {
-    sConditionVariable.wait(*sLock, [](){ return sCondition.load(); });
+    std::unique_lock<std::mutex> lock(sMutex);
+    sConditionVariable.wait(lock, [](){ return sCondition.load(); });
     sTransmitterThread->join();
-    delete sLock;
     delete sTransmitterThread;
     delete sQueue;
     delete sRefreshTimer;

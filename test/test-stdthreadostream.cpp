@@ -114,9 +114,9 @@ public:
 };
 
 constexpr size_t  cChunkSize = 8u;
-constexpr size_t  cMaxTaskCount = 8u;
+constexpr size_t  cMaxTaskCount = 18u;
 constexpr size_t  cSizeofIntegerConversion = 8u;
-constexpr uint8_t cAppendStackBufferLength = 8u;
+constexpr uint8_t cAppendStackBufferLength = 80u;
 
 typedef nowtech::log::LogStdThreadOstream<size_t, false, cChunkSize> LogInterface;
 typedef nowtech::log::Log<AppInterface, LogInterface, cMaxTaskCount , cSizeofIntegerConversion, cAppendStackBufferLength> Log;
@@ -198,12 +198,12 @@ int main() {
   Log::i() << "bool:" << true << Log::end;
   Log::i() << "bool:" << false << Log::end;
 
-/*  for(int32_t i = 0; i < threadCount; ++i) {
+  for(int32_t i = 0; i < threadCount; ++i) {
     threads[i] = std::thread(delayedLog, i);
   }
   for(int32_t i = 0; i < threadCount; ++i) {
     threads[i].join();
-  }*/
+  }
   Log::done();
   return 0;
 }

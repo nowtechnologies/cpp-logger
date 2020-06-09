@@ -1117,7 +1117,7 @@ private:
       ++where;
       tmpValue /= aBase;
     } while((tmpValue != 0) && (where < tAppendStackBufferLength));
-    if(where > tAppendStackBufferLength) {
+    if(where >= tAppendStackBufferLength) {
       aAppender.push(cNumericError);
       return;
     }

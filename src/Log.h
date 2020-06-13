@@ -24,6 +24,7 @@
 #ifndef NOWTECH_LOG_INCLUDED
 #define NOWTECH_LOG_INCLUDED
 
+#include "ArrayMap.h"
 #include <cstdint>
 #include <type_traits>
 #include <algorithm>
@@ -45,6 +46,7 @@ enum class Exception : uint8_t {
   cCount        = 1u
 };
 
+// We stick to 8-bit task IDs to let them fit in the first byte of a chunk.
 typedef uint8_t TaskIdType;
 typedef int8_t LogTopicType;
 
@@ -213,7 +215,7 @@ enum class LogShiftChainMarker : uint8_t {
 };
 
 class LogInterfaceBase {
-private:
+protected:
   inline static constexpr char cUnknownApplicationName[] = "UNKNOWN";
 
   LogInterfaceBase() = delete;
@@ -663,19 +665,14 @@ public:
       else { // nothing to do
       }
       uint32_t taskHandle = tInterface::getCurrentThreadId();
-      auto found = sTaskIds.find(taskHandle);
-      if(found == sTaskIds.end()) {
-        sTaskIds[taskHandle] = sNextTaskId;
-        if(sConfig->allowRegistrationLog) {
-          Appender appender(sNextTaskId);
-          append(appender, cRegisteredTask);
-          append(appender, tInterface::getThreadName(taskHandle));
-          append(appender, cSpace);
-          append(appender, LogConfig::cD3, static_cast<uint16_t>(sNextTaskId));
-          appender.flush();
-        }
-        else { // nothing to do
-        }
+      sTaskIds[taskHandle] = sNextTaskId;
+      if(sConfig->allowRegistrationLog) {
+        Appender appender(sNextTaskId);
+        append(appender, cRegisteredTask);
+        append(appender, aTaskName);
+        append(appender, cSpace);
+        append(appender, LogConfig::cD3, static_cast<uint16_t>(sNextTaskId));
+        appender.flush();
         ++sNextTaskId;
       }
       else { // nothing to do
@@ -687,8 +684,8 @@ public:
     tInterface::unlock();
   }
 
-  /// Registers the current log application
-  /// at most 255 tasks. All others will be handled as one.
+  /// Registers the current log topic.
+  /// At most 255 topic. All others will be handled as one.
   static void registerTopic(LogTopicInstance &aTopic, char const * const aPrefix) noexcept {
     aTopic = sNextFreeTopic.fetch_add(cFreeTopicIncrement);
     sRegisteredTopics[aTopic] = aPrefix;

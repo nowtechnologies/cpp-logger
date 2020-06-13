@@ -121,6 +121,26 @@ constexpr uint8_t cAppendStackBufferLength = 80u;
 typedef nowtech::log::LogStdThreadOstream<size_t, false, cChunkSize> LogInterface;
 typedef nowtech::log::Log<AppInterface, LogInterface, cMaxTaskCount , cSizeofIntegerConversion, cAppendStackBufferLength> Log;
 typedef nowtech::log::LogConfig LC;
+
+void testArrayMap() noexcept {
+  nowtech::log::ArrayMap<int16_t, double, 8u> map;
+  map.insert(10, 10.1);
+  map.insert(20, 20.1);
+  map.insert(5, 5.1);
+  map.insert(15, 15.1);
+  map.insert(25, 25.1);
+  map.insert(1, 1.1);
+  map.insert(35, 35.1);
+  map.insert(45, 45.1);
+  map.insert(6, 6.1);
+  map.insert(7, 7.1);
+  std::cout << "ArrayMap.size() " << map.size() << '\n';
+  std::cout << "ArrayMap.find(5) " << (map.find(5) != map.end()) << '\n';
+  std::cout << "ArrayMap.find(8) " << (map.find(8) != map.end()) << '\n';
+  for(auto &i : map) {
+    std::cout << "ArrayMap " << i.key << ' ' << i.value << '\n';
+  }
+}
  
 void delayedLog(int32_t n) {
   Log::registerCurrentTask(names[n]);
@@ -133,6 +153,8 @@ void delayedLog(int32_t n) {
 
  
 int main() {
+  testArrayMap();
+
   std::thread threads[threadCount];
   
   nowtech::log::LogConfig logConfig;

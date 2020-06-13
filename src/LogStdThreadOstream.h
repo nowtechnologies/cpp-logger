@@ -24,6 +24,7 @@
 #ifndef NOWTECH_LOG_STD_THREAD_OSTREAM_INCLUDED
 #define NOWTECH_LOG_STD_THREAD_OSTREAM_INCLUDED
 
+#include "ArrayMap.h"
 #include "Log.h"
 #include <mutex>
 #include <atomic>
@@ -185,6 +186,7 @@ private:
 
   LogStdThreadOstream() = delete;
 
+  // The below methods are NOT PART of the API.
 public:
   // Must be called before Log::init()
   static void init(std::ostream &aOutput) noexcept {
@@ -200,7 +202,7 @@ public:
     sTransmitterThread = new std::thread(aTransmitterThreadFunction);
   }
 
-  static void finishedTransmitterThread() noexcept { // nothing to do
+  static void finishedTransmitterThread() noexcept {
     std::lock_guard<std::mutex> lock(sMutex);
     sCondition = true;
     sConditionVariable.notify_one();
@@ -217,31 +219,12 @@ public:
     sOutput->flush();
   }
 
-  /// Registers the given name and an artificial ID in a local map.
-  /// This function MUST NOT be called from user code.
-  /// void Log::registerCurrentTask(char const * const aTaskName) may call it only.
-  /// @param aTaskName Task name to register.
   static void registerThreadName(char const * const aTaskName) noexcept {
     NameId item { std::string(aTaskName), sNextGivenTaskId };
     ++sNextGivenTaskId;
     sTaskNamesIds->insert(std::pair<std::thread::id, NameId>(std::this_thread::get_id(), item));
   }
 
-  /// Returns the task name. This is a dummy and inefficient implementation,
-  /// but normally runs only once during registering the current thread.
-  /// Note, the returned pointer is valid only as long as this object lives.
-  static char const * getThreadName(uint32_t const aHandle) noexcept {
-    char const * result = "";
-    for(auto const &iterator : *sTaskNamesIds) {
-      if(iterator.second.id == aHandle) {
-        result = iterator.second.name.c_str();
-      }
-      else { // nothing to do
-      }
-    }
-    return result;
-  }
-  /// Returns the current task name.
   static char const * getCurrentThreadName() noexcept {
     char const *result;
     auto found = sTaskNamesIds->find(std::this_thread::get_id());
@@ -254,7 +237,6 @@ public:
     return result;
   }
 
-  /// Returns an artificial thread ID for registered threads, cInvalidGivenTaskId otherwise;
   static uint32_t getCurrentThreadId() noexcept {
     uint32_t result;
     auto found = sTaskNamesIds->find(std::this_thread::get_id());
@@ -267,7 +249,6 @@ public:
     return result;
   }
 
-  /// Returns the std::chrono::steady_clock tick count converted into ms and truncated to 32 bits.
   static uint32_t getLogTime() noexcept {
     return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
   }
@@ -276,47 +257,36 @@ public:
     return false;
   }
 
-  /// Enqueues the chunks, possibly blocking if the queue is full.
   static void push(char const * const aChunkStart) noexcept {
     sQueue->send(aChunkStart);
   }
 
-  /// Removes the oldest chunk from the queue.
   static bool fetch(char * const aChunkStart) noexcept {
     return sQueue->receive(aChunkStart, sPauseLength);
   }
 
-  /// Pauses execution for the period given in the constructor.
   static void pause() noexcept {
     std::this_thread::sleep_for(std::chrono::milliseconds(sPauseLength));
   }
 
-  /// Transmits the data using the serial descriptor given in the constructor.
-  /// @param buffer start of data
-  /// @param length length of data
-  /// @param aProgressFlag address of flag to be set on transmission end.
   static void transmit(const char * const aBuffer, LogSizeType const aLength, std::atomic<bool> *aProgressFlag) noexcept {
     sOutput->write(aBuffer, aLength);
     aProgressFlag->store(false);
   }
 
-  /// Starts the timer after which a partially filled buffer should be sent.
   static void startRefreshTimer(std::atomic<bool> *aRefreshFlag) noexcept {
     sRefreshNeeded = aRefreshFlag;
     sRefreshTimer->start();
   }
 
-  /// Sets the flag.
   static void refreshNeeded() noexcept {
     sRefreshNeeded->store(true);
   }
 
-  /// Calls az OS-specific lock to acquire a critical section, if implemented
   static void lock() noexcept {
     sApiMutex.lock();
   }
 
-  /// Calls az OS-specific lock to release critical section, if implemented
   static void unlock() noexcept {
     sApiMutex.unlock();
   }

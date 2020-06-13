@@ -51,8 +51,8 @@ public:
   Elem const *find(tKey const aKey) const noexcept {
     Elem const * const last = mArray + mCount;
     Elem key(aKey);
-    Elem const* found = std::lower_bound(mArray, last, aKey, [](Elem const& aElem1, Elem const& aElem2){ return aElem1 < aElem2; });
-    return (found != last && !tCompare()(key, found->key)) ? found : last;
+    Elem const* found = std::lower_bound(mArray, last, key, [](Elem const& aElem1, Elem const& aElem2){ return aElem1 < aElem2; });
+    return (found != last && !(aKey < found->key)) ? found : last;
   }
 
   bool insert(tKey const aKey, tValue const aValue) noexcept {

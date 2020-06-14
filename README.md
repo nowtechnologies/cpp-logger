@@ -1,12 +1,14 @@
 # C++ template-based log library
 
+**It is currently under refactor on an other branch.**
+
 Originally, this library was designed to use in an embedded environment as a debugging log library.
 It was designed to be lean and versatile
 with different options for tailoring the logger behavior for smaller
 or larger MCUs. 
 
 There are two log call flavours:
-  - The function call-like solution with only one value to print per line. For small compiled size, avoid many parameter footprints (i.e. avoid many template instantiations).
+  - The function call-like solution with only one value to print per line.
   - The `std::ostream`-like solution, which uses minimal stack. Discarding headers is interesting only if there are many simple homogeneous calls, or the available bandwidth is limited.
 
 The library reserves some buffers and a queue during construction, and makes

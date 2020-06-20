@@ -42,16 +42,16 @@ public:
   }
 
   /// @return nullptr.
-  static char const * getCurrentThreadName() noexcept {
+  static char const * getCurrentTaskName() noexcept {
     return "";
   }
 
-  static char const *getThreadName(uint32_t const aHandle) noexcept {
+  static char const *getTaskName(uint32_t const aHandle) noexcept {
     return nullptr;
   };
 
   /// Returns 0.
-  static uint32_t getCurrentThreadId() noexcept {
+  static uint32_t getCurrentTaskId() noexcept {
     return 0u;
   }
 
@@ -61,7 +61,7 @@ public:
   }
 
   /// Does nothing.
-  static void createTransmitterThread(Log *, void(*)(void *)) noexcept {
+  static void createTransmitterTask(Log *, void(*)(void *)) noexcept {
   }
 
   /// Does nothing.

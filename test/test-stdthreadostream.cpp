@@ -118,8 +118,8 @@ constexpr size_t  cMaxTaskCount = 18u;
 constexpr size_t  cSizeofIntegerConversion = 8u;
 constexpr uint8_t cAppendStackBufferLength = 80u;
 
-typedef nowtech::log::LogStdThreadOstream<size_t, false, cChunkSize> LogInterface;
-typedef nowtech::log::Log<AppInterface, LogInterface, cMaxTaskCount , cSizeofIntegerConversion, cAppendStackBufferLength> Log;
+typedef nowtech::log::LogStdThreadOstream<size_t, cMaxTaskCount, false, cChunkSize> LogInterface;
+typedef nowtech::log::Log<AppInterface, LogInterface, cSizeofIntegerConversion, cAppendStackBufferLength> Log;
 typedef nowtech::log::LogConfig LC;
 
 void testArrayMap() noexcept {
@@ -137,6 +137,21 @@ void testArrayMap() noexcept {
   std::cout << "ArrayMap.size() " << map.size() << '\n';
   std::cout << "ArrayMap.find(5) " << (map.find(5) != map.end()) << '\n';
   std::cout << "ArrayMap.find(8) " << (map.find(8) != map.end()) << '\n';
+  for(auto &i : map) {
+    std::cout << "ArrayMap " << i.key << ' ' << i.value << '\n';
+  }
+  std::cout << "ArrayMap remove last\n";
+  map.erase(map.end() - 1);
+  for(auto &i : map) {
+    std::cout << "ArrayMap " << i.key << ' ' << i.value << '\n';
+  }
+  std::cout << "ArrayMap remove first\n";
+  map.erase(map.begin());
+  for(auto &i : map) {
+    std::cout << "ArrayMap " << i.key << ' ' << i.value << '\n';
+  }
+  std::cout << "ArrayMap remove 10\n";
+  map.erase(10);
   for(auto &i : map) {
     std::cout << "ArrayMap " << i.key << ' ' << i.value << '\n';
   }
@@ -158,6 +173,9 @@ int main() {
   std::thread threads[threadCount];
   
   nowtech::log::LogConfig logConfig;
+  logConfig.queueLength = 2222u; 
+  logConfig.circularBufferLength = 2222u;
+  logConfig.transmitBufferLength = 2222u;
   logConfig.taskRepresentation = nowtech::log::LogConfig::TaskRepresentation::cName;
   logConfig.refreshPeriod      = 200u;
   LogInterface::init(std::cout);

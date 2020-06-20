@@ -52,17 +52,17 @@ namespace nowtech {
     }
 
     /// Returns empty string.
-    static const char * const getThreadName(uint32_t const aHandle) noexcept {
+    static const char * const getTaskName(uint32_t const aHandle) noexcept {
       return "";
     }
 
     /// Returns nullptr.
-    static const char * const getCurrentThreadName() noexcept {
+    static const char * const getCurrentTaskName() noexcept {
       return nullptr;
     }
 
     /// Returns 0.
-    static uint32_t getCurrentThreadId() noexcept {
+    static uint32_t getCurrentTaskId() noexcept {
       return 0u;
     }
 
@@ -72,7 +72,7 @@ namespace nowtech {
     }
 
     /// Does nothing.
-    static void createTransmitterThread(Log *, void(*)(void *)) noexcept {
+    static void createTransmitterTask(Log *, void(*)(void *)) noexcept {
     }
 
     /// Sends the chunk contents immediately.

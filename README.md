@@ -3,11 +3,12 @@
 Originally, this library was designed to use in an embedded environment as a debugging log library.
 It was designed to be lean and versatile
 with different options for tailoring the logger behavior for smaller
-or larger MCUs. 
+or larger MCUs.
 
 There are two log call flavours:
-  - The function call-like solution with only one value to print per line. For small compiled size, avoid many parameter footprints (i.e. avoid many template instantiations).
-  - The `std::ostream`-like solution, which uses minimal stack. Discarding headers is interesting only if there are many simple homogeneous calls, or the available bandwidth is limited.
+
+- The function call-like solution with only one value to print per line. For small compiled size, avoid many parameter footprints (i.e. avoid many template instantiations).
+- The `std::ostream`-like solution, which uses minimal stack. Discarding headers is interesting only if there are many simple homogeneous calls, or the available bandwidth is limited.
 
 The library reserves some buffers and a queue during construction, and makes
 small heap allocations during thread / log topic registrations. After it, no heap
@@ -60,17 +61,17 @@ Increase using the chained call (effective in the example):
 
 This is a FreeRTOS multithreaded log example with and without header info (task name, uptime in ms, log topic). The header components can individually be switched on and off.
 
-```defaultThread 0000001 SYSTEM       Reset cause: brown out
-defaultThread 0000001 PERSISTENCE  Calculated persistence length: 89
+```defaultTask 0000001 SYSTEM       Reset cause: brown out
+defaultTask 0000001 PERSISTENCE  Calculated persistence length: 89
 watchdogThrd. 0000006 WATCHDOG     Registered [0]: black box    
-defaultThread 0000117 BLACKBOX     start: 180 capac: 223 low: 44 intact: 89
-defaultThread 0000278 BLACKBOX     expecting 223 records.
-defaultThread 0000279 BLACKBOX     read 223 valid records.
+defaultTask 0000117 BLACKBOX     start: 180 capac: 223 low: 44 intact: 89
+defaultTask 0000278 BLACKBOX     expecting 223 records.
+defaultTask 0000279 BLACKBOX     read 223 valid records.
 0 0. rec: 0 RstSrcOpTimeIv 2245m, reset: 01000110, invalid: false
-defaultThread 0000279 PERSISTENCE  readValues: copy 0
-defaultThread 0000288 PERSISTENCE  readValues: copy 0: no mismatch
-defaultThread 0000288 BLACKBOX     start: 180 capac: 223 low: 44 intact: 89
-defaultThread 0000297 BLACKBOX     last session:
+defaultTask 0000279 PERSISTENCE  readValues: copy 0
+defaultTask 0000288 PERSISTENCE  readValues: copy 0: no mismatch
+defaultTask 0000288 BLACKBOX     start: 180 capac: 223 low: 44 intact: 89
+defaultTask 0000297 BLACKBOX     last session:
 46 226. rec: 0 RstSrcOpTimeIv 4424m, reset: 00001010, invalid: false
 44 227. rec: 0 PanBldRelCharg PAN: 307, build: 1040, release: true charge: true
 43 228. rec: 3 ServModeEnter  164850ms, arg: 0
@@ -80,8 +81,8 @@ defaultThread 0000297 BLACKBOX     last session:
 
 The library is divided into two classes:
 
-  - `nowtech::Log` for high-level API and template logic.
-  - `nowtech::LogOsInterface` and subclasses for OS or library-dependent layer.
+- `nowtech::Log` for high-level API and template logic.
+- `nowtech::LogOsInterface` and subclasses for OS or library-dependent layer.
 
 The `nowtech::Log` class provides a high-level template based interface for logging characters, C-style
 strings, signed and unsigned integers and floating point types. This
@@ -101,7 +102,7 @@ Log topic values of type `nowtech::LogTopicInstance` (one for each registered to
 #include "Log.h"
 
 namespace nowtech {
-namespace SomeLogTopicNamespace { 
+namespace SomeLogTopicNamespace {
 
 extern LogTopicInstance system;
 extern LogTopicInstance watchdog;
@@ -123,8 +124,7 @@ nowtech::LogTopicInstance nowtech::SomeLogTopicNamespace::watchdog;
 nowtech::LogTopicInstance nowtech::SomeLogTopicNamespace::selfTest;
 ```
 
-
-### The class operates roughly as follows:
+### The class operates roughly as follows
 
 The message is constructed on the caller stack and is broken into
 chunks identified by the artificially created task ID.
@@ -156,18 +156,18 @@ small number of parameters.
 
 The following steps are required to initialize the log system:
 
-1.  Create a `nowtech::LogConfig` object with the desired settings.
+1. Create a `nowtech::LogConfig` object with the desired settings.
     This instance should not be destructed.
-2.  Create an object of the desired `Nowtech::LogOsInterface` subclass. This instance should not be destructed.
-3.  Create the Log instance using the above two objects. This instance should not be destructed.
-4.  Register the required topics using `Log::registerTopic` to let only a
+2. Create an object of the desired `Nowtech::LogOsInterface` subclass. This instance should not be destructed.
+3. Create the Log instance using the above two objects. This instance should not be destructed.
+4. Register the required topics using `Log::registerTopic` to let only a
     subset of logs be printed. These variables of type `nowtech::LogTopicInstance` are defined in various parts of the whole application, even in libraries. For example, if
     you have there `system`, `connection` and `watchdog` defined, and
     you only register `connection` and `watchdog`, all the calls
     starting with `Log::send(nowtech::SomeLogTopicNameSpace::system` will be
     discarded. Registration is performed like `Log::registerTopic(nowtech::SomeLogTopicNamespace::system, "system");`
 
-5.  Call `Log::registerCurrentTask();` in all the tasks you want to log
+5. Call `Log::registerCurrentTask();` in all the tasks you want to log
     from. This is necessary for the log system to avoid message interleaving from different tasks.
 
 Note, the Log system behaves as a singleton, and defining two instances won't work.
@@ -176,16 +176,16 @@ Note, the Log system behaves as a singleton, and defining two instances won't wo
 
 Log message format can be controlled
 
-  - by the contents of the `LogConfig` object used during initialization. These are application-wide settings.
-  - by the actual method template called and its parameters. These control only this message or one of its parameters.
+- by the contents of the `LogConfig` object used during initialization. These are application-wide settings.
+- by the actual method template called and its parameters. These control only this message or one of its parameters.
 
 Format of numeric values are described by `nowtech::LogFormat`. Its
 constructor takes two parameters:
 
-  - base: numeric system base, only effective for integer numbers. Can
+- base: numeric system base, only effective for integer numbers. Can
     be 2, 10 or 16, all other values result in error message. Floating
     point numbers always use 10.
-  - fill: number of digits to emit with zero fill, or 0 if no fill.
+- fill: number of digits to emit with zero fill, or 0 if no fill.
 
 #### LogConfig
 
@@ -201,14 +201,11 @@ cD*n* |constant         |LogFormat(10, *n*)|Used for n-digit decimal output, whe
 cX*n* |constant         |LogFormat(16, *n*)|Used for n-digit hexadecimal output, where *n* can be 2, 4, 6 or 8.
 allowRegistrationLog|bool|true          |If true, task registration will be sent to the output in the form -=- Registered task: taskname (1) -=- **Note**, systems with limited stack space and using std::ostream-like calls need to disable this, because the output is created using the stack-hungry variadic template call.
 `logFromIsr`|bool       |false          |If false, log calls from ISR are discarded. If true, logging from ISR works. However, in this mode the message may be truncated if the actual free space in the queue is too small.
-`chunkSize`|uint32_t    |8              |Total message chunk size to use in queue and buffers. The net capacity is one less, because the task ID takes a character. Messages are not handled as a string of characters, but as a series of chunks. '\\r' signs the end of a message.
 `queueLength`|uint32_t  |64             |Length of a queue in chunks. Increasing this value decreases the probability of message truncation when the queue stores more chunks.
 `circularBufferLength`|uint32_t|64      |Length of the circular buffer used for message sorting, measured also in chunks. This should have the same length as the queue, but one can experiment with it.
 `transmitBufferLength`|uint32_t|32      |Length of a buffer in the transmission double-buffer pair, in chunks. This should have half the length as the queue, but one can experiment with it. To be absolutely sure, this can have the same length as the queue, and the log system will also manage bursts of logs.
-`appendStackBufferLength`|uint16_t|34   |Length of stack-reserved buffer for number to string conversion. The default value is big enough to hold 32 bit binary numbers. Can be reduced if no binary output is used and stack space is limited.
 `pauseLength`|uint32_t|100              |Length of a pause in ms during waiting for transmission of the other buffer or timeout while reading from the queue.
 `refreshPeriod`|uint32_t|100            |Length of the period used to wait for messages before transmitting a partially filled transmission buffer. The shorter the value the more prompt the display.
-`blocks`|bool           |true           |Signs if writing the queue from tasks can block or should return on the expense of possibly losing chunks. Note, that even in blocking mode the throughput can not reach the theoretical throughput (such as UART bps limit). **Important\!** In non-blocking mode high demands will result in loss of complete messages and often an internal lockup of the log system.
 `taskRepresentation`|`cNone`, `cId`, `cName`|TaskRepresentation::cId|Representation of a task in the message header, if any. It can be missing, numeric task ID or OS task name.
 `appendBasePrefix`|bool |false          |True if number formatter should append 0b or 0x.
 `taskIdFormat`|see LogFormat above|`cX2`|Format for displaying the task ID in the message header, if it is displayed as ID.

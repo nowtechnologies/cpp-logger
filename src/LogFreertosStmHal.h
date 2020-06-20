@@ -109,19 +109,19 @@ namespace nowtech {
 
     /// Returns the task name.
     /// Must not be called from ISR.
-    static const char * getThreadName(uint32_t const aHandle) noexcept {
+    static const char * getTaskName(uint32_t const aHandle) noexcept {
       return pcTaskGetName(reinterpret_cast<TaskHandle_t>(aHandle));
     }
 
     /// Returns the current task name.
     /// Must not be called from ISR.
-    static const char * getCurrentThreadName() noexcept {
+    static const char * getCurrentTaskName() noexcept {
       return pcTaskGetName(nullptr);
     }
 
     /// Returns the FreeRTOS-specific thread ID.
     /// Must not be called from ISR.
-    static uint32_t getCurrentThreadId() noexcept {
+    static uint32_t getCurrentTaskId() noexcept {
       return reinterpret_cast<uint32_t>(xTaskGetCurrentTaskHandle());
     }
 
@@ -133,13 +133,13 @@ namespace nowtech {
     /// Creates the transmitter thread using the name logtransmitter.
     /// @param log the Log object to operate on.
     /// @param threadFunc the C function which serves as the task body and
-    /// which will call Log.transmitterThread.
-    static void createTransmitterThread(Log *aLog, void(* aThreadFunc)(void *)) noexcept {
-      xTaskCreate(aThreadFunc, "logtransmitter", mTaskStackLength, aLog, mPriority, &mTaskHandle);
+    /// which will call Log.transmitterTask.
+    static void createTransmitterTask(Log *aLog, void(* aTaskFunc)(void *)) noexcept {
+      xTaskCreate(aTaskFunc, "logtransmitter", mTaskStackLength, aLog, mPriority, &mTaskHandle);
     }
 
     /// Joins the thread.
-    static void joinTransmitterThread() noexcept {
+    static void joinTransmitterTask() noexcept {
       vTaskDelete(mTaskHandle);
     }
 

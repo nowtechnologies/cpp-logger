@@ -26,6 +26,7 @@
 
 #include "ArrayMap.h"
 #include "Log.h"
+#include <set>
 #include <mutex>
 #include <atomic>
 #include <thread>
@@ -39,24 +40,26 @@
 
 namespace nowtech::log {
 
-template<typename tLogSizeType, bool tBlocks = false, tLogSizeType tChunkSize = 8u>
+template<typename tLogSizeType, TaskIdType tMaxTaskCount, bool tBlocks = false, tLogSizeType tChunkSize = 8u>
 class LogStdThreadOstream : public LogInterfaceBase {
 public:
   typedef tLogSizeType LogSizeType;
-  static constexpr tLogSizeType cChunkSize = tChunkSize;
+  static constexpr tLogSizeType cChunkSize      = tChunkSize;
+  static constexpr TaskIdType   cMaxTaskCount   = tMaxTaskCount;
+  static constexpr TaskIdType   cLocalTaskId    = tMaxTaskCount;
+  static constexpr TaskIdType   cInvalidTaskId  = std::numeric_limits<TaskIdType>::max();
 
 private:
-  static constexpr uint32_t cInvalidGivenTaskId = 0u;
   inline static constexpr uint32_t cEnqueuePollDelay = 1u;
 
   struct NameId {
     std::string name;
-    uint32_t    id;
+    TaskIdType  id;
 
     NameId() : id(0u) {
     }
 
-    NameId(std::string &&aName, uint32_t const aId) : name(std::move(aName)), id(aId) {
+    NameId(std::string &&aName, TaskIdType const aId) : name(std::move(aName)), id(aId) {
     }
   };
 
@@ -132,7 +135,7 @@ private:
     std::mutex                   mMutex;
     std::unique_lock<std::mutex> mLock;
     std::condition_variable      mConditionVariable;
-    std::thread                  mThread;
+    std::thread                  mTask;
     std::atomic<bool>            mKeepRunning = true;
     std::atomic<bool>            mAlarmed = false;
 
@@ -141,13 +144,13 @@ private:
     : mTimeout(aTimeout)
     , mLambda(aLambda) 
     , mLock(mMutex)
-    , mThread(&LogStdThreadOstream::FreeRtosTimer::run, this) {
+    , mTask(&LogStdThreadOstream::FreeRtosTimer::run, this) {
     }
 
     ~FreeRtosTimer() noexcept {
       mKeepRunning = false;
       mConditionVariable.notify_one();
-      mThread.join();
+      mTask.join();
     }
   
     void run() noexcept {
@@ -167,11 +170,11 @@ private:
     }
   } *sRefreshTimer;
 
-  inline static uint32_t sPauseLength;
-  inline static std::ostream* sOutput;
-  inline static std::thread* sTransmitterThread;
+  inline static uint32_t                           sPauseLength;
+  inline static std::ostream*                      sOutput;
+  inline static std::thread*                       sTransmitterTask;
   inline static std::map<std::thread::id, NameId>* sTaskNamesIds;
-  inline static uint32_t sNextGivenTaskId = cInvalidGivenTaskId + 1u; // TODO consider
+  inline static std::set<TaskIdType>*              sFreeTaskIds;
 
   /// True if the partially filled buffer should be sent. This is
   /// defined here because OS-specific functionality is here.
@@ -179,10 +182,10 @@ private:
 
   /// We use std::recursive_mutex here (banned by HIC++4), because the OsInterface API
   /// was designed for FreeRTOS, and we currently have no resource to redesign it.
-  inline static std::recursive_mutex          sApiMutex;
-  inline static std::mutex                    sMutex;
+  inline static std::mutex                    sDoneMutex;
   inline static std::condition_variable       sConditionVariable;
   inline static std::atomic<bool>             sCondition = false;
+  inline static std::mutex                    sRegistrationMutex;
 
   LogStdThreadOstream() = delete;
 
@@ -194,57 +197,99 @@ public:
   }
 
   // Only Log::init may call this
-  static void init(LogConfig const &aConfig, std::function<void()> aTransmitterThreadFunction) {
+  static void init(LogConfig const &aConfig, std::function<void()> aTransmitterTaskFunction) {
     sTaskNamesIds = new std::map<std::thread::id, NameId>();
+    sFreeTaskIds = new std::set<TaskIdType>();
+    for(TaskIdType i = 0u; i < tMaxTaskCount; ++i) {
+      sFreeTaskIds->insert(i);
+    }
     sPauseLength = aConfig.pauseLength;
     sQueue = new FreeRtosQueue(aConfig.queueLength);
     sRefreshTimer = new FreeRtosTimer(aConfig.refreshPeriod, []{refreshNeeded();});
-    sTransmitterThread = new std::thread(aTransmitterThreadFunction);
+    sTransmitterTask = new std::thread(aTransmitterTaskFunction);
   }
 
-  static void finishedTransmitterThread() noexcept {
-    std::lock_guard<std::mutex> lock(sMutex);
+  static void finishedTransmitterTask() noexcept {
+    std::lock_guard<std::mutex> lock(sDoneMutex);
     sCondition = true;
     sConditionVariable.notify_one();
   }
 
   static void done() {
-    std::unique_lock<std::mutex> lock(sMutex);
-    sConditionVariable.wait(lock, [](){ return sCondition.load(); });
-    sTransmitterThread->join();
-    delete sTransmitterThread;
+    std::unique_lock<std::mutex> lock(sDoneMutex);
+    sConditionVariable.wait(lock, [](){ 
+      return sCondition.load();
+    });
+    sTransmitterTask->join();
+    delete sTransmitterTask;
     delete sQueue;
     delete sRefreshTimer;
     delete sTaskNamesIds;
+    delete sFreeTaskIds;
     sOutput->flush();
   }
 
-  static void registerThreadName(char const * const aTaskName) noexcept {
-    NameId item { std::string(aTaskName), sNextGivenTaskId };
-    ++sNextGivenTaskId;
-    sTaskNamesIds->insert(std::pair<std::thread::id, NameId>(std::this_thread::get_id(), item));
-  }
-
-  static char const * getCurrentThreadName() noexcept {
-    char const *result;
-    auto found = sTaskNamesIds->find(std::this_thread::get_id());
-    if(found != sTaskNamesIds->end()) {
-      result = found->second.name.c_str();
+  static TaskIdType registerCurrentTask(char const * const aTaskName) noexcept {
+    std::lock_guard<std::mutex> lock(sRegistrationMutex);
+    TaskIdType nextTaskId;
+    auto id = std::this_thread::get_id();
+    if(sFreeTaskIds->size() > 0u && sTaskNamesIds->find(id) == sTaskNamesIds->end()) {
+      auto first = sFreeTaskIds->begin();
+      nextTaskId = *first;
+      sFreeTaskIds->erase(first);
+      NameId item { std::string(aTaskName == nullptr ? cAnonymousTaskName : aTaskName), nextTaskId };
+      sTaskNamesIds->insert(std::pair<std::thread::id, NameId>(id, item));
     }
     else {
-      result = cUnknownApplicationName;
+      nextTaskId = cInvalidTaskId;
+    }
+    return nextTaskId;
+  }
+
+  static TaskIdType unregisterCurrentTask() noexcept {
+    std::lock_guard<std::mutex> lock(sRegistrationMutex);
+    TaskIdType foundTaskId;
+    auto id = std::this_thread::get_id();
+    auto found = sTaskNamesIds->find(id);
+    if(found != sTaskNamesIds->end()) {
+      sFreeTaskIds->insert(found->second.id);
+      sTaskNamesIds->erase(found);
+    }
+    else {
+      foundTaskId = cInvalidTaskId;
+    }
+    return foundTaskId;
+  }
+
+  static char const * getCurrentTaskName() noexcept {
+    char const *result;
+    if(isInterrupt()) {
+      result = cIsrTaskName;
+    }
+    else {
+      auto found = sTaskNamesIds->find(std::this_thread::get_id());
+      if(found != sTaskNamesIds->end()) {
+        result = found->second.name.c_str();
+      }
+      else {
+        result = cUnknownTaskName;
+      }
     }
     return result;
   }
 
-  static uint32_t getCurrentThreadId() noexcept {
-    uint32_t result;
-    auto found = sTaskNamesIds->find(std::this_thread::get_id());
-    if(found != sTaskNamesIds->end()) {
-      result = found->second.id;
+  static TaskIdType getCurrentTaskId(TaskIdType const aTaskId) noexcept {
+    TaskIdType result = aTaskId;
+    if(aTaskId == cLocalTaskId && !isInterrupt()) {
+      auto found = sTaskNamesIds->find(std::this_thread::get_id());
+      if(found != sTaskNamesIds->end()) {
+        result = found->second.id;
+      }
+      else {
+        result = cInvalidTaskId;
+      }
     }
-    else {
-      result = cInvalidGivenTaskId;
+    else { // nothing to do
     }
     return result;
   }
@@ -282,28 +327,8 @@ public:
   static void refreshNeeded() noexcept {
     sRefreshNeeded->store(true);
   }
-
-  static void lock() noexcept {
-    sApiMutex.lock();
-  }
-
-  static void unlock() noexcept {
-    sApiMutex.unlock();
-  }
 };
 
 } //namespace nowtech
 
 #endif // NOWTECH_LOG_FREERTOS_STMHAL_INCLUDED
-
-
-
-
-
-
-
-
-
-
-
-

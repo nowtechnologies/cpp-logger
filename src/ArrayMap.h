@@ -72,6 +72,21 @@ public:
     return result;
   }
 
+  Elem const *erase(Elem const * const aIterator) noexcept {
+    Elem* last = mArray + mCount;
+    if(aIterator != last) {
+      Elem* where = const_cast<Elem*>(aIterator);
+      std::copy(where + 1, mArray + mCount, where);
+      --mCount;
+    }
+    else { // nothing to do
+    }
+    return aIterator;
+  }
+
+  Elem const *erase(tKey const aKey) noexcept {
+    return erase(find(aKey));
+  }
 };
 
 }

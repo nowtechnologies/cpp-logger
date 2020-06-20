@@ -42,19 +42,19 @@ namespace NumericSystem {
 }
 
 enum class Exception : uint8_t {
-  cOutOfTaskIds = 0u,
-  cCount        = 1u
+  cOutOfTaskIdsOrDoubleRegistration = 0u,
+  cCount                            = 1u
 };
 
 // We stick to 8-bit task IDs to let them fit in the first byte of a chunk.
 typedef uint8_t TaskIdType;
 typedef int8_t LogTopicType;
 
-template<typename tAppInterface, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>
+template<typename tAppInterface, typename tInterface, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>
 class Log;
 
 class LogTopicInstance final {
-  template<typename tAppInterface, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>
+  template<typename tAppInterface, typename tInterface, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>
   friend class Log;
 
 public:
@@ -216,7 +216,9 @@ enum class LogShiftChainMarker : uint8_t {
 
 class LogInterfaceBase {
 protected:
-  inline static constexpr char cUnknownApplicationName[] = "UNKNOWN";
+  inline static constexpr char cUnknownTaskName[]   = "UNKNOWN";
+  inline static constexpr char cAnonymousTaskName[] = "ANONYMOUS";
+  inline static constexpr char cIsrTaskName[]       = "ISR";
 
   LogInterfaceBase() = delete;
 };
@@ -228,11 +230,8 @@ protected:
 //   static constexpr tLogSizeType cChunkSize = tChunkSize;
 // };
 
-template<typename tAppInterface, typename tInterface, TaskIdType tMaxTaskCount, uint8_t tSizeofIntegerConversion = 4u, uint8_t tAppendStackBufferLength = 70u>
+template<typename tAppInterface, typename tInterface, uint8_t tSizeofIntegerConversion = 4u, uint8_t tAppendStackBufferLength = 70u>
 class Log final {
-  static_assert(tMaxTaskCount < std::numeric_limits<TaskIdType>::max());
-  static_assert(tSizeofIntegerConversion == 2u || tSizeofIntegerConversion == 4u || tSizeofIntegerConversion == 8u);
-
 private:
   static constexpr uint8_t  cSizeofIntegerConversion = tSizeofIntegerConversion;
   typedef typename std::conditional<cSizeofIntegerConversion == 8u, uint64_t, uint32_t>::type IntegerConversionUnsigned;
@@ -240,17 +239,21 @@ private:
   typedef typename tInterface::LogSizeType LogSizeType;
   static_assert(std::is_unsigned<LogSizeType>::value);
 
-  static constexpr TaskIdType  cInvalidTaskId  = std::numeric_limits<TaskIdType>::max();
-  static constexpr TaskIdType  cLocalTaskId    = tMaxTaskCount;
-  static constexpr TaskIdType  cMaxTaskIdCount = tMaxTaskCount + 1u;
+  static constexpr TaskIdType  cInvalidTaskId  = tInterface::cInvalidTaskId;
+  static constexpr TaskIdType  cLocalTaskId    = tInterface::cLocalTaskId;
+  static constexpr TaskIdType  cMaxTaskIdCount = tInterface::cMaxTaskCount + 1u;
   static constexpr LogSizeType cChunkSize      = tInterface::cChunkSize;
 
   static constexpr LogTopicType cFreeTopicIncrement = 1u;
   static constexpr LogTopicType cFirstFreeTopic = LogTopicInstance::cInvalidTopic + cFreeTopicIncrement;
 
+  static_assert(cInvalidTaskId == std::numeric_limits<TaskIdType>::max());
+  static_assert(tInterface::cMaxTaskCount < std::numeric_limits<TaskIdType>::max() - 1u);
+  static_assert(tInterface::cMaxTaskCount == cLocalTaskId);
+  static_assert(tSizeofIntegerConversion == 2u || tSizeofIntegerConversion == 4u || tSizeofIntegerConversion == 8u);
+
   static constexpr char cNumericError            = '#';
 
-  static constexpr char cIsrTaskName             = '?';
   static constexpr char cEndOfMessage            = '\r';
   static constexpr char cEndOfLine               = '\n';
   static constexpr char cNumericFill             = '0';
@@ -267,6 +270,7 @@ private:
   inline static constexpr char cNan[]            = "nan";
   inline static constexpr char cInf[]            = "inf";
   inline static constexpr char cRegisteredTask[] = "-=- Registered task: ";
+  inline static constexpr char cUnregisteredTask[] = "-=- Unregistered task: ";
 
   /// Used to convert digits to characters.
   inline static constexpr char cDigit2char[NumericSystem::cHexadecimal] = {
@@ -279,12 +283,8 @@ private:
   /// The user-defined configuration values for message header and number
   /// rendering and else.
   inline static LogConfig const * sConfig;
-  inline static TaskIdType sNextTaskId = 1u;
 
   inline static std::atomic<LogTopicType> sNextFreeTopic;
-
-  /// Map used to turn OS-specific task IDs into the artificial counterparts.
-  inline static std::map<uint32_t, TaskIdType> sTaskIds; // TODO eliminate
 
   /// Registry to check calls like Log::send(nowtech::LogTopicType::cSystem, "stuff to log")
   inline static std::map<LogTopicType, char const *> sRegisteredTopics; // TODO eliminate
@@ -625,16 +625,12 @@ private:
 public:
   /// Will be used as Log << something << to << log << Log::end;
   static constexpr LogShiftChainMarker end = LogShiftChainMarker::cEnd;
-/*
-  /// Output for unknown LogTopicType parameter
-  inline static constexpr char cUnknownApplicationName[cNameLength] = "UNKNOWN";
-*/
 
   static void init(LogConfig const &aConfig) {
     sKeepRunning = true;
     sNextFreeTopic = cFirstFreeTopic;
     sConfig = &aConfig;
-    tInterface::init(aConfig, [](){ transmitterThreadFunction(); });
+    tInterface::init(aConfig, [](){ transmitterTaskFunction(); });
     sShiftChainingAppenders = tAppInterface::template _newArray<Appender>(cMaxTaskIdCount);
   }
 
@@ -653,35 +649,37 @@ public:
   }
 
   /// Registers the current task if not already present. It can register
-  /// at most 255 tasks. All others will be handled as one.
-  /// NOTE: this method locks to inhibit concurrent access of methods with the same name.
+  /// at most 254 tasks. All others will be handled as one.
   /// @param aTaskName Task name to use, when the osInterface supports it.
   static void registerCurrentTask(char const * const aTaskName) noexcept {
-    tInterface::lock();
-    if(sNextTaskId != cLocalTaskId) {
-      if(aTaskName != nullptr) {
-        tInterface::registerThreadName(aTaskName);
-      }
-      else { // nothing to do
-      }
-      uint32_t taskHandle = tInterface::getCurrentThreadId();
-      sTaskIds[taskHandle] = sNextTaskId;
+    TaskIdType taskId = tInterface::registerCurrentTask(aTaskName);
+    if(taskId != cInvalidTaskId) {
       if(sConfig->allowRegistrationLog) {
-        Appender appender(sNextTaskId);
+        Appender appender(taskId);
         append(appender, cRegisteredTask);
         append(appender, aTaskName);
         append(appender, cSpace);
-        append(appender, LogConfig::cD3, static_cast<uint16_t>(sNextTaskId));
+        append(appender, LogConfig::cD3, static_cast<uint16_t>(taskId));
         appender.flush();
-        ++sNextTaskId;
       }
       else { // nothing to do
       }
     }
     else {
-      tAppInterface::fatalError(Exception::cOutOfTaskIds);
+      tAppInterface::fatalError(Exception::cOutOfTaskIdsOrDoubleRegistration);
     }
-    tInterface::unlock();
+  }
+
+  static void unregisterCurrentTask() noexcept {
+    TaskIdType taskId = tInterface::unregisterCurrentTask();
+    if(taskId != cInvalidTaskId && sConfig->allowRegistrationLog) {
+      Appender appender(taskId);
+      append(appender, cUnregisteredTask);
+      append(appender, LogConfig::cD3, static_cast<uint16_t>(taskId));
+      appender.flush();
+    }
+    else { // nothing to do
+    }
   }
 
   /// Registers the current log topic.
@@ -691,14 +689,9 @@ public:
     sRegisteredTopics[aTopic] = aPrefix;
   }
 
-  /// Returns true if the given app was registered.
-  static bool isRegistered(LogTopicType const aTopic) noexcept {
-    return sRegisteredTopics.find(aTopic) != sRegisteredTopics.end();
-  }
-
 // TODO supplement .cpp for FreeRTOS with extern "C"
   /// Transmitter thread implementation.
-  static void transmitterThreadFunction() noexcept {
+  static void transmitterTaskFunction() noexcept {
     // we assume all the buffers are valid
     CircularBuffer circularBuffer(sConfig->circularBufferLength);
     TransmitBuffers transmitBuffers(sConfig->transmitBufferLength);
@@ -749,7 +742,7 @@ public:
       }
       transmitBuffers.transmitIfNeeded();
     }
-    tInterface::finishedTransmitterThread();
+    tInterface::finishedTransmitterTask();
   }
 
   template<typename tValueType>
@@ -793,17 +786,6 @@ public:
   }
 
 private:
-  static TaskIdType getCurrentTaskId(TaskIdType const aTaskId) noexcept {
-    TaskIdType result = aTaskId;
-    if(aTaskId == cLocalTaskId && !tInterface::isInterrupt()) {
-      auto found = sTaskIds.find(tInterface::getCurrentThreadId());
-      return found == sTaskIds.end() ? cInvalidTaskId : found->second;
-    }
-    else { // nothing to do
-    }
-    return result;
-  }
-
   static void startSend(Appender& aAppender) noexcept {
     startSendNoHeader(aAppender);
     if(aAppender.isValid()) {
@@ -812,12 +794,7 @@ private:
         append(aAppender, cSpace);
       }
       else if(sConfig->taskRepresentation == LogConfig::TaskRepresentation::cName) {
-        if(tInterface::isInterrupt()) {
-          append(aAppender, cIsrTaskName);
-        }
-        else {
-          append(aAppender, tInterface::getCurrentThreadName());
-        }
+        append(aAppender, tInterface::getCurrentTaskName());
         append(aAppender, cSpace);
       }
       else { // nothing to do
@@ -1036,7 +1013,7 @@ private:
 
 public:
   static LogShiftChainHelper i(TaskIdType const aTaskId = cLocalTaskId) noexcept {
-    TaskIdType const taskId = getCurrentTaskId(aTaskId);
+    TaskIdType const taskId = tInterface::getCurrentTaskId(aTaskId);
     Appender& appender = sShiftChainingAppenders[taskId];
     appender.startWithTaskId(taskId);
     startSend(appender);
@@ -1044,7 +1021,7 @@ public:
   }
 
   static LogShiftChainHelper i(LogTopicType const aTopic, TaskIdType const aTaskId = cLocalTaskId) noexcept {
-    TaskIdType const taskId = getCurrentTaskId(aTaskId);
+    TaskIdType const taskId = tInterface::getCurrentTaskId(aTaskId);
     Appender& appender = sShiftChainingAppenders[taskId];
     appender.startWithTaskId(taskId);
     startSend(appender, aTopic);
@@ -1052,7 +1029,7 @@ public:
   }
 
   static LogShiftChainHelper n(TaskIdType const aTaskId = cLocalTaskId) noexcept {
-    TaskIdType const taskId = getCurrentTaskId(aTaskId);
+    TaskIdType const taskId = tInterface::getCurrentTaskId(aTaskId);
     Appender& appender = sShiftChainingAppenders[taskId];
     appender.startWithTaskId(taskId);
     startSendNoHeader(appender);
@@ -1060,7 +1037,7 @@ public:
   }
 
   static LogShiftChainHelper n(LogTopicType const aTopic, TaskIdType const aTaskId = cLocalTaskId) noexcept {
-    TaskIdType const taskId = getCurrentTaskId(aTaskId);
+    TaskIdType const taskId = tInterface::getCurrentTaskId(aTaskId);
     Appender& appender = sShiftChainingAppenders[taskId];
     appender.startWithTaskId(taskId);
     startSendNoHeader(appender, aTopic);

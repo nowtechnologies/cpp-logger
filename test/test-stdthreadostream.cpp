@@ -45,6 +45,7 @@ char names[10][10] = {
 
 namespace LogTopics {
 nowtech::log::LogTopicInstance system;
+nowtech::log::LogTopicInstance test;
 }
 
 /*void* operator new(std::size_t aCount) {
@@ -79,8 +80,9 @@ void operator delete[](void* aPtr, size_t) {
 
 class AppInterface final {
 private:
-  inline static char cExceptionTexts[static_cast<size_t>(nowtech::log::Exception::cCount)][32] = {
-    "cOutOfTaskIds"
+  inline static char cExceptionTexts[static_cast<size_t>(nowtech::log::Exception::cCount)][64] = {
+    "cOutOfTaskIdsOrDoubleRegistration",
+    "cOutOfTopics"
   };
 
 public:
@@ -115,11 +117,12 @@ public:
 
 constexpr size_t  cChunkSize = 8u;
 constexpr size_t  cMaxTaskCount = 18u;
+constexpr size_t  cMaxTopicCount = 18u;
 constexpr size_t  cSizeofIntegerConversion = 8u;
 constexpr uint8_t cAppendStackBufferLength = 80u;
 
 typedef nowtech::log::LogStdThreadOstream<size_t, cMaxTaskCount, false, cChunkSize> LogInterface;
-typedef nowtech::log::Log<AppInterface, LogInterface, cSizeofIntegerConversion, cAppendStackBufferLength> Log;
+typedef nowtech::log::Log<AppInterface, LogInterface, cMaxTopicCount, cSizeofIntegerConversion, cAppendStackBufferLength> Log;
 typedef nowtech::log::LogConfig LC;
 
 void testArrayMap() noexcept {
@@ -181,6 +184,7 @@ int main() {
   LogInterface::init(std::cout);
   Log::init(logConfig);
   Log::registerTopic(LogTopics::system, "system");
+  Log::registerTopic(LogTopics::test, "test");
 
   uint64_t const uint64 = 123456789012345;
   int64_t const int64 = -123456789012345;
@@ -191,13 +195,13 @@ int main() {
   Log::send(i);
 
   Log::send("send*");
-  Log::send(LogTopics::system, LC::cX16, uint64);
+  Log::send(LogTopics::test, LC::cX16, uint64);
   Log::send(uint64);
   Log::sendNoHeader(LogTopics::system, LC::cX16, uint64);
   Log::sendNoHeader(uint64);
 
   Log::send("<<");
-  Log::i(LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
+  Log::i(LogTopics::test) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::n(LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::i() << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::n() << "uint64: " << uint64 << " int64: " << int64 << Log::end;

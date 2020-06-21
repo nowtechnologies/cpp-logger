@@ -24,8 +24,8 @@
 #ifndef NOWTECH_LOG_STD_THREAD_OSTREAM_INCLUDED
 #define NOWTECH_LOG_STD_THREAD_OSTREAM_INCLUDED
 
-#include "ArrayMap.h"
 #include "Log.h"
+#include <map>
 #include <set>
 #include <mutex>
 #include <atomic>

@@ -31,7 +31,6 @@
 #include <atomic>
 #include <limits>
 #include <cmath>
-#include <map>
 
 namespace nowtech::log {
 
@@ -43,22 +42,23 @@ namespace NumericSystem {
 
 enum class Exception : uint8_t {
   cOutOfTaskIdsOrDoubleRegistration = 0u,
-  cCount                            = 1u
+  cOutOfTopics                      = 1u,
+  cCount                            = 2u
 };
 
 // We stick to 8-bit task IDs to let them fit in the first byte of a chunk.
 typedef uint8_t TaskIdType;
-typedef int8_t LogTopicType;
+typedef int8_t LogTopicType; // this needs to be signed to let the overload resolution work
 
-template<typename tAppInterface, typename tInterface, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>
+template<typename tAppInterface, typename tInterface, size_t tMaxTopicCount, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>
 class Log;
 
 class LogTopicInstance final {
-  template<typename tAppInterface, typename tInterface, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>
+  template<typename tAppInterface, typename tInterface, size_t tMaxTopicCount, uint8_t tSizeofIntegerTransform, uint8_t tAppendStackBufferLength>
   friend class Log;
 
 public:
-  static constexpr LogTopicType cInvalidTopic = 0u;
+  static constexpr LogTopicType cInvalidTopic = std::numeric_limits<LogTopicType>::min();
 
 private:
   LogTopicType mValue = cInvalidTopic;
@@ -230,23 +230,24 @@ protected:
 //   static constexpr tLogSizeType cChunkSize = tChunkSize;
 // };
 
-template<typename tAppInterface, typename tInterface, uint8_t tSizeofIntegerConversion = 4u, uint8_t tAppendStackBufferLength = 70u>
+template<typename tAppInterface, typename tInterface, size_t tMaxTopicCount, uint8_t tSizeofIntegerConversion = 4u, uint8_t tAppendStackBufferLength = 70u>
 class Log final {
 private:
   static constexpr uint8_t  cSizeofIntegerConversion = tSizeofIntegerConversion;
   typedef typename std::conditional<cSizeofIntegerConversion == 8u, uint64_t, uint32_t>::type IntegerConversionUnsigned;
   typedef typename std::conditional<cSizeofIntegerConversion == 8u, int64_t, int32_t>::type IntegerConversionSigned;
   typedef typename tInterface::LogSizeType LogSizeType;
-  static_assert(std::is_unsigned<LogSizeType>::value);
 
   static constexpr TaskIdType  cInvalidTaskId  = tInterface::cInvalidTaskId;
   static constexpr TaskIdType  cLocalTaskId    = tInterface::cLocalTaskId;
   static constexpr TaskIdType  cMaxTaskIdCount = tInterface::cMaxTaskCount + 1u;
   static constexpr LogSizeType cChunkSize      = tInterface::cChunkSize;
 
-  static constexpr LogTopicType cFreeTopicIncrement = 1u;
-  static constexpr LogTopicType cFirstFreeTopic = LogTopicInstance::cInvalidTopic + cFreeTopicIncrement;
+  static constexpr LogTopicType cFreeTopicIncrement = 1;
+  static constexpr LogTopicType cFirstFreeTopic = 0;
 
+  static_assert(tMaxTopicCount <= std::numeric_limits<LogTopicType>::max());
+  static_assert(std::is_unsigned<LogSizeType>::value);
   static_assert(cInvalidTaskId == std::numeric_limits<TaskIdType>::max());
   static_assert(tInterface::cMaxTaskCount < std::numeric_limits<TaskIdType>::max() - 1u);
   static_assert(tInterface::cMaxTaskCount == cLocalTaskId);
@@ -272,22 +273,14 @@ private:
   inline static constexpr char cRegisteredTask[] = "-=- Registered task: ";
   inline static constexpr char cUnregisteredTask[] = "-=- Unregistered task: ";
 
-  /// Used to convert digits to characters.
   inline static constexpr char cDigit2char[NumericSystem::cHexadecimal] = {
     '0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'
   };
 
-  /// Can be used to shut off the transmitter thread, if any
   inline static std::atomic<bool> sKeepRunning;
-
-  /// The user-defined configuration values for message header and number
-  /// rendering and else.
   inline static LogConfig const * sConfig;
-
-  inline static std::atomic<LogTopicType> sNextFreeTopic;
-
-  /// Registry to check calls like Log::send(nowtech::LogTopicType::cSystem, "stuff to log")
-  inline static std::map<LogTopicType, char const *> sRegisteredTopics; // TODO eliminate
+  inline static std::atomic<LogTopicType> sNextFreeTopic = cFirstFreeTopic;
+  inline static ArrayMap<LogTopicType, char const *, tMaxTopicCount> sRegisteredTopics;
 
   class Appender final {
   private:
@@ -626,9 +619,9 @@ public:
   /// Will be used as Log << something << to << log << Log::end;
   static constexpr LogShiftChainMarker end = LogShiftChainMarker::cEnd;
 
+  // TODO remark in docs: must come before registering topics
   static void init(LogConfig const &aConfig) {
     sKeepRunning = true;
-    sNextFreeTopic = cFirstFreeTopic;
     sConfig = &aConfig;
     tInterface::init(aConfig, [](){ transmitterTaskFunction(); });
     sShiftChainingAppenders = tAppInterface::template _newArray<Appender>(cMaxTaskIdCount);
@@ -682,11 +675,13 @@ public:
     }
   }
 
-  /// Registers the current log topic.
-  /// At most 255 topic. All others will be handled as one.
   static void registerTopic(LogTopicInstance &aTopic, char const * const aPrefix) noexcept {
     aTopic = sNextFreeTopic.fetch_add(cFreeTopicIncrement);
-    sRegisteredTopics[aTopic] = aPrefix;
+    if(!sRegisteredTopics.insert(aTopic, aPrefix)) {
+      tAppInterface::fatalError(Exception::cOutOfTopics);
+    }
+    else { // nothing to do
+    }
   }
 
 // TODO supplement .cpp for FreeRTOS with extern "C"
@@ -814,7 +809,7 @@ private:
     auto found = sRegisteredTopics.find(aTopic);
     if(found != sRegisteredTopics.end()) {
       startSend(aAppender);
-      append(aAppender, found->second);
+      append(aAppender, found->value);
       append(aAppender, cSpace);
     }
     else {
@@ -834,7 +829,7 @@ private:
     auto found = sRegisteredTopics.find(aTopic);
     if(found != sRegisteredTopics.end()) {
       startSendNoHeader(aAppender);
-      append(aAppender, found->second);
+      append(aAppender, found->value);
       append(aAppender, cSpace);
     }
     else {

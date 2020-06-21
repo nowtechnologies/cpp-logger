@@ -67,9 +67,12 @@ private:
   inline static class FreeRtosQueue final {
     boost::lockfree::queue<char *> sQueue;
     boost::lockfree::queue<char *> mFreeList;
-    std::mutex                     mMutex;
-    std::unique_lock<std::mutex>   mLock;
-    std::condition_variable        mConditionVariable;
+    std::mutex                     mMutexDataArrived;
+    std::mutex                     mMutexDataProcessed;
+    std::condition_variable        mConditionVariableDataArrived;
+    std::condition_variable        mConditionVariableDataProcessed;
+    std::atomic<bool>              mDataArrived;
+    std::atomic<bool>              mDataProcessed;
 
     char        *mBuffer;
   
@@ -78,7 +81,6 @@ private:
     FreeRtosQueue(size_t const aBlockCount) noexcept
       : sQueue(aBlockCount)
       , mFreeList(aBlockCount)
-      , mLock(mMutex)
       , mBuffer(new char[aBlockCount * cChunkSize]) {
       char *ptr = mBuffer;
       for(size_t i = 0u; i < aBlockCount; ++i) {
@@ -97,20 +99,29 @@ private:
         char *payload;
         success = mFreeList.pop(payload);
         if(success) {
+          std::unique_lock<std::mutex> lock(mMutexDataArrived);
           std::copy(aChunkStart, aChunkStart + cChunkSize, payload);
           sQueue.bounded_push(payload); // this should always succeed here
-          mConditionVariable.notify_one();
+          mDataArrived = true;
+          mConditionVariableDataArrived.notify_one();
         }
-        else {
-          std::this_thread::sleep_for(std::chrono::milliseconds(cEnqueuePollDelay)); // TODO eliminate
+        else if(tBlocks) {
+          std::unique_lock<std::mutex> lock(mMutexDataProcessed);
+          mConditionVariableDataProcessed.wait(lock, [this](){
+            return mDataProcessed.load();
+          });
+          mDataProcessed = false;
         }
       } while(tBlocks && !success);
     }
 
     bool receive(char * const aChunkStart, uint32_t const aPauseLength) noexcept {
       bool result;
+      std::unique_lock<std::mutex> lock(mMutexDataArrived);
       // Safe to call empty because there will be only one consumer.
-      if(sQueue.empty() && mConditionVariable.wait_for(mLock, std::chrono::milliseconds(aPauseLength)) == std::cv_status::timeout) {
+      if(sQueue.empty() && !mConditionVariableDataArrived.wait_for(lock, std::chrono::milliseconds(aPauseLength), [this](){
+        return mDataArrived.load();
+      })) {
         result = false;
       }
       else {
@@ -119,10 +130,14 @@ private:
         if(result) {
           std::copy(payload, payload + cChunkSize, aChunkStart);
           mFreeList.bounded_push(payload); // this should always succeed here
+          std::unique_lock<std::mutex> lock(mMutexDataProcessed);
+          mDataProcessed = true;
+          mConditionVariableDataProcessed.notify_one();
         }
         else { // nothing to do
         }
       }
+      mDataArrived = false;
       return result;
     }
   } *sQueue;
@@ -133,38 +148,50 @@ private:
     uint32_t                     mTimeout;
     std::function<void()>        mLambda;
     std::mutex                   mMutex;
-    std::unique_lock<std::mutex> mLock;
     std::condition_variable      mConditionVariable;
     std::thread                  mTask;
     std::atomic<bool>            mKeepRunning = true;
     std::atomic<bool>            mAlarmed = false;
+    std::atomic<bool>            mCondition = false;
 
   public:
     FreeRtosTimer(uint32_t const aTimeout, std::function<void()> aLambda)
     : mTimeout(aTimeout)
     , mLambda(aLambda) 
-    , mLock(mMutex)
     , mTask(&LogStdThreadOstream::FreeRtosTimer::run, this) {
     }
 
     ~FreeRtosTimer() noexcept {
+      std::unique_lock<std::mutex> lock(mMutex);
       mKeepRunning = false;
       mConditionVariable.notify_one();
+      mConditionVariable.wait(lock, [this](){ 
+        return mCondition.load();
+      });
       mTask.join();
     }
   
     void run() noexcept {
       while(mKeepRunning) {
-        if(mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mTimeout)) == std::cv_status::timeout && mAlarmed) {
+        std::unique_lock<std::mutex> lock(mMutex);
+        mConditionVariable.wait(lock, [this](){
+          return !mKeepRunning || mAlarmed;
+        });
+        if(mKeepRunning) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(mTimeout));
           mLambda();
           mAlarmed = false;
         }
-        else {
+        else { // nothing to do
         }
       }
+      std::lock_guard<std::mutex> lock(mMutex);
+      mCondition = true;
+      mConditionVariable.notify_one();
     }
 
     void start() noexcept {
+      std::unique_lock<std::mutex> lock(mMutex);
       mAlarmed = true;
       mConditionVariable.notify_one();
     }

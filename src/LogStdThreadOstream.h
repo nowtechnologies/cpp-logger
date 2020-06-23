@@ -71,7 +71,6 @@ private:
     std::mutex                     mMutexDataProcessed;
     std::condition_variable        mConditionVariableDataArrived;
     std::condition_variable        mConditionVariableDataProcessed;
-    std::atomic<bool>              mDataArrived;
     std::atomic<bool>              mDataProcessed;
 
     char        *mBuffer;
@@ -102,7 +101,6 @@ private:
           std::unique_lock<std::mutex> lock(mMutexDataArrived);
           std::copy(aChunkStart, aChunkStart + cChunkSize, payload);
           sQueue.bounded_push(payload); // this should always succeed here
-          mDataArrived = true;
           mConditionVariableDataArrived.notify_one();
         }
         else if(tBlocks) {
@@ -119,8 +117,8 @@ private:
       bool result;
       std::unique_lock<std::mutex> lock(mMutexDataArrived);
       // Safe to call empty because there will be only one consumer.
-      if(sQueue.empty() && !mConditionVariableDataArrived.wait_for(lock, std::chrono::milliseconds(aPauseLength), [this](){
-        return mDataArrived.load();
+      if(!mConditionVariableDataArrived.wait_for(lock, std::chrono::milliseconds(aPauseLength), [this](){
+        return !sQueue.empty();
       })) {
         result = false;
       }
@@ -137,7 +135,6 @@ private:
         else { // nothing to do
         }
       }
-      mDataArrived = false;
       return result;
     }
   } *sQueue;

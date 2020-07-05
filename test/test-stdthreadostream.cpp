@@ -242,12 +242,12 @@ int main() {
   Log::i() << "bool:" << true << Log::end;
   Log::i() << "bool:" << false << Log::end;
 
-  for(int32_t i = 0; i < threadCount; ++i) {
-    threads[i] = std::thread(delayedLog, i);
+/*  for(int32_t i = 0; i < threadCount; ++i) {
+    threads[i] = std::thread(delayedLog, i);uu
   }
   for(int32_t i = 0; i < threadCount; ++i) {
     threads[i].join();
-  }
+  }*/
   Log::done();
   return 0;
 }

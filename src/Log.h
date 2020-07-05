@@ -268,19 +268,15 @@ private:
   static constexpr char cScientificE             = 'e';
 
 
-  inline static constexpr char cNan[]            = "nan";
-  inline static constexpr char cInf[]            = "inf";
-  inline static constexpr char cRegisteredTask[] = "-=- Registered task: ";
-  inline static constexpr char cUnregisteredTask[] = "-=- Unregistered task: ";
+  inline static constexpr char cNan[]               = "nan";
+  inline static constexpr char cInf[]               = "inf";
+  inline static constexpr char cRegisteredTask[]    = "-=- Registered task: ";
+  inline static constexpr char cUnregisteredTask[]  = "-=- Unregistered task: ";
+  inline static constexpr char cStringToLogOnDone[] = "\n\r";
 
   inline static constexpr char cDigit2char[NumericSystem::cHexadecimal] = {
     '0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'
   };
-
-  inline static std::atomic<bool> sKeepRunning;
-  inline static LogConfig const * sConfig;
-  inline static std::atomic<LogTopicType> sNextFreeTopic = cFirstFreeTopic;
-  inline static ArrayMap<LogTopicType, char const *, tMaxTopicCount> sRegisteredTopics;
 
   class Appender final {
   private:
@@ -330,8 +326,6 @@ private:
       mIndex = 1u;
     }
   }; // class Appender
-
-  inline static Appender* sShiftChainingAppenders;
 
   class Chunk final {
   private:
@@ -517,7 +511,6 @@ private:
     LogSizeType mIndex[2] = { 0u, 0u };
     uint8_t mActiveTaskId = cInvalidTaskId;
     bool mWasTerminalChunk = false;
-    std::atomic<bool> mTransmitInProgress = false;
     std::atomic<bool> mRefreshNeeded = false;
 
   public:
@@ -526,7 +519,6 @@ private:
       , cBufferLengthInBytes(aBufferLength * (cChunkSize - 1u)) {
       mBuffers[0] = tAppInterface::template _newArray<char>(cBufferLengthInBytes);
       mBuffers[1] = tAppInterface::template _newArray<char>(cBufferLengthInBytes);
-      tInterface::startRefreshTimer(&mRefreshNeeded); // TODO eliminate
     }
 
     ~TransmitBuffers() noexcept {
@@ -540,6 +532,10 @@ private:
 
     TaskIdType getActiveTaskId() const noexcept {
       return mActiveTaskId;
+    }
+
+    void refreshNeeded() noexcept {
+      mRefreshNeeded = true;
     }
 
     bool gotTerminalChunk() const noexcept {
@@ -586,21 +582,18 @@ private:
       }
       else {
         if(mChunkCount[mBufferToWrite] == cBufferLengthInChunks) {
-          while(mTransmitInProgress) {
-            tInterface::pause(); // TODO elimninate
-          }
+          tInterface::waitWhileTransmitInProgress();
           mRefreshNeeded = true;
         }
         else { // nothing to do
         }
-        if(!mTransmitInProgress && mRefreshNeeded) {
-          mTransmitInProgress = true;
-          tInterface::transmit(mBuffers[mBufferToWrite], mIndex[mBufferToWrite], &mTransmitInProgress);
+        if(tInterface::isTransmitDone() && mRefreshNeeded) {
+          tInterface::transmit(mBuffers[mBufferToWrite], mIndex[mBufferToWrite]);
           mBufferToWrite = 1 - mBufferToWrite;
           mIndex[mBufferToWrite] = 0u;
           mChunkCount[mBufferToWrite] = 0u;
           mRefreshNeeded = false;
-          tInterface::startRefreshTimer(&mRefreshNeeded);
+          tInterface::startRefreshTimer();
         }
         else { // nothing to do
         }
@@ -614,6 +607,14 @@ private:
   };
 
   Log() = delete;
+  
+  inline static std::atomic<bool> sKeepRunning = true;
+  inline static LogConfig const * sConfig;
+  inline static std::atomic<LogTopicType> sNextFreeTopic = cFirstFreeTopic;
+  inline static ArrayMap<LogTopicType, char const *, tMaxTopicCount> sRegisteredTopics;
+  inline static CircularBuffer* sCircularBuffer;
+  inline static TransmitBuffers* sTransmitBuffers;
+  inline static Appender* sShiftChainingAppenders;
 
 public:
   /// Will be used as Log << something << to << log << Log::end;
@@ -621,16 +622,20 @@ public:
 
   // TODO remark in docs: must come before registering topics
   static void init(LogConfig const &aConfig) {
-    sKeepRunning = true;
     sConfig = &aConfig;
-    tInterface::init(aConfig, [](){ transmitterTaskFunction(); });
+    sCircularBuffer = tAppInterface::template _new<CircularBuffer>(sConfig->circularBufferLength);
+    sTransmitBuffers = tAppInterface::template _new<TransmitBuffers>(sConfig->transmitBufferLength);
+    tInterface::init(aConfig, [](){ transmitterTaskFunction(); }, [](){ sTransmitBuffers->refreshNeeded(); });
     sShiftChainingAppenders = tAppInterface::template _newArray<Appender>(cMaxTaskIdCount);
+    tInterface::startRefreshTimer();
   }
 
   // TODO note in docs about init and done sequence
   static void done() {
     sKeepRunning = false;
     tInterface::done();
+    tAppInterface::template _delete<CircularBuffer>(sCircularBuffer);
+    tAppInterface::template _delete<TransmitBuffers>(sTransmitBuffers);
     tAppInterface::template _deleteArray<Appender>(sShiftChainingAppenders);
   }
 
@@ -688,54 +693,53 @@ public:
   /// Transmitter thread implementation.
   static void transmitterTaskFunction() noexcept {
     // we assume all the buffers are valid
-    CircularBuffer circularBuffer(sConfig->circularBufferLength);
-    TransmitBuffers transmitBuffers(sConfig->transmitBufferLength);
     while(sKeepRunning) {
+      tInterface::waitForData();
       // At this point the transmitBuffers must have free space for a chunk
-      if(!transmitBuffers.hasActiveTask()) {
-        if(circularBuffer.isEmpty()) {
-          static_cast<void>(transmitBuffers << circularBuffer.fetch());
+      if(!sTransmitBuffers->hasActiveTask()) {
+        if(sCircularBuffer->isEmpty()) {
+          static_cast<void>(*sTransmitBuffers << sCircularBuffer->fetch());
         }
         else { // the circularbuffer may be full or not
-          static_cast<void>(transmitBuffers << circularBuffer.peek());
-          circularBuffer.pop();
+          static_cast<void>(*sTransmitBuffers << sCircularBuffer->peek());
+          sCircularBuffer->pop();
         }
       }
       else { // There is a task in the transmitBuffers to be continued
-        if(circularBuffer.isEmpty() || (!circularBuffer.isFull() && circularBuffer.isInspected())) {
-          Chunk const &chunk = circularBuffer.fetch();
+        if(sCircularBuffer->isEmpty() || (!sCircularBuffer->isFull() && sCircularBuffer->isInspected())) {
+          Chunk const &chunk = sCircularBuffer->fetch();
           if(chunk.getTaskId() != cInvalidTaskId) {
-            if(transmitBuffers.getActiveTaskId() == chunk.getTaskId()) {
-              transmitBuffers << chunk;
+            if(sTransmitBuffers->getActiveTaskId() == chunk.getTaskId()) {
+              *sTransmitBuffers << chunk;
             }
             else {
-              circularBuffer.keepFetched();
+              sCircularBuffer->keepFetched();
             }
           }
           else { // nothing to do
           }
         }
-        else if(!circularBuffer.isFull() && !circularBuffer.isInspected()) {
-          Chunk const &chunk = circularBuffer.inspect(transmitBuffers.getActiveTaskId());
-          if(!circularBuffer.isInspected()) {
-            transmitBuffers << chunk;
-            circularBuffer.removeFound();
+        else if(!sCircularBuffer->isFull() && !sCircularBuffer->isInspected()) {
+          Chunk const &chunk = sCircularBuffer->inspect(sTransmitBuffers->getActiveTaskId());
+          if(!sCircularBuffer->isInspected()) {
+            *sTransmitBuffers << chunk;
+            sCircularBuffer->removeFound();
           }
           else { // nothing to do
           }
         }
         else { // the circular buffer is full
-          static_cast<void>(transmitBuffers << circularBuffer.peek());
-          circularBuffer.pop();
-          circularBuffer.clearInspected();
+          static_cast<void>(*sTransmitBuffers << sCircularBuffer->peek());
+          sCircularBuffer->pop();
+          sCircularBuffer->clearInspected();
         }
       }
-      if(transmitBuffers.gotTerminalChunk()) {
-        circularBuffer.clearInspected();
+      if(sTransmitBuffers->gotTerminalChunk()) {
+        sCircularBuffer->clearInspected();
       }
       else {
       }
-      transmitBuffers.transmitIfNeeded();
+      sTransmitBuffers->transmitIfNeeded();
     }
     tInterface::finishedTransmitterTask();
   }

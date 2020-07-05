@@ -92,6 +92,10 @@ private:
       delete[] mBuffer;
     }
 
+    bool isEmpty() const noexcept {
+      return sQueue.empty();
+    }
+
     void send(char const * const aChunkStart) noexcept {
       bool success;
       do {
@@ -162,18 +166,17 @@ private:
       std::unique_lock<std::mutex> lock(mMutex);
       mKeepRunning = false;
       mConditionVariable.notify_one();
-      mConditionVariable.wait(lock, [this](){ 
-        return mCondition.load();
-      });
       mTask.join();
     }
   
     void run() noexcept {
       while(mKeepRunning) {
-        std::unique_lock<std::mutex> lock(mMutex);
-        mConditionVariable.wait(lock, [this](){
-          return !mKeepRunning || mAlarmed;
-        });
+        {
+          std::unique_lock<std::mutex> lock(mMutex);
+          mConditionVariable.wait(lock, [this](){
+           return !mKeepRunning.load() || mAlarmed.load();
+          });
+        }
         if(mKeepRunning) {
           std::this_thread::sleep_for(std::chrono::milliseconds(mTimeout));
           mLambda();
@@ -182,9 +185,6 @@ private:
         else { // nothing to do
         }
       }
-      std::lock_guard<std::mutex> lock(mMutex);
-      mCondition = true;
-      mConditionVariable.notify_one();
     }
 
     void start() noexcept {
@@ -200,15 +200,12 @@ private:
   inline static std::map<std::thread::id, NameId>* sTaskNamesIds;
   inline static std::set<TaskIdType>*              sFreeTaskIds;
 
-  /// True if the partially filled buffer should be sent. This is
-  /// defined here because OS-specific functionality is here.
-  inline static std::atomic<bool>*            sRefreshNeeded;
-
-  /// We use std::recursive_mutex here (banned by HIC++4), because the OsInterface API
-  /// was designed for FreeRTOS, and we currently have no resource to redesign it.
-  inline static std::mutex                    sDoneMutex;
-  inline static std::condition_variable       sConditionVariable;
-  inline static std::atomic<bool>             sCondition = false;
+  inline static std::mutex                    sFinishedTxMutex;
+  inline static std::condition_variable       sFinishedTxConditionVariable;
+  inline static std::atomic<bool>             sFinishedTx = false;
+  inline static std::mutex                    sDataArrivedMutex;
+  inline static std::condition_variable       sDataArrivedConditionVariable;
+  inline static std::atomic<bool>             sKeepRunning = true;
   inline static std::mutex                    sRegistrationMutex;
 
   LogStdThreadOstream() = delete;
@@ -221,7 +218,7 @@ public:
   }
 
   // Only Log::init may call this
-  static void init(LogConfig const &aConfig, std::function<void()> aTransmitterTaskFunction) {
+  static void init(LogConfig const &aConfig, std::function<void()> aTransmitterTaskFunction, std::function<void()> aRefreshNeededFunction) {
     sTaskNamesIds = new std::map<std::thread::id, NameId>();
     sFreeTaskIds = new std::set<TaskIdType>();
     for(TaskIdType i = 0u; i < tMaxTaskCount; ++i) {
@@ -229,21 +226,17 @@ public:
     }
     sPauseLength = aConfig.pauseLength;
     sQueue = new FreeRtosQueue(aConfig.queueLength);
-    sRefreshTimer = new FreeRtosTimer(aConfig.refreshPeriod, []{refreshNeeded();});
+    sRefreshTimer = new FreeRtosTimer(aConfig.refreshPeriod, aRefreshNeededFunction);
     sTransmitterTask = new std::thread(aTransmitterTaskFunction);
   }
 
-  static void finishedTransmitterTask() noexcept {
-    std::lock_guard<std::mutex> lock(sDoneMutex);
-    sCondition = true;
-    sConditionVariable.notify_one();
+  static void finishedTransmitterTask() noexcept { // nothing to do
   }
 
   static void done() {
-    std::unique_lock<std::mutex> lock(sDoneMutex);
-    sConditionVariable.wait(lock, [](){ 
-      return sCondition.load();
-    });
+    sKeepRunning = false;
+    std::unique_lock<std::mutex> lock(sDataArrivedMutex);
+    sDataArrivedConditionVariable.notify_one();
     sTransmitterTask->join();
     delete sTransmitterTask;
     delete sQueue;
@@ -326,8 +319,24 @@ public:
     return false;
   }
 
+  static void waitForData() noexcept {
+    std::unique_lock<std::mutex> lock(sDataArrivedMutex);
+    sDataArrivedConditionVariable.wait(lock, [](){ 
+      return !sQueue->isEmpty() || !sKeepRunning.load();
+    });
+  }
+
+  static void waitWhileTransmitInProgress() noexcept {
+    std::unique_lock<std::mutex> lock(sFinishedTxMutex);
+    sFinishedTxConditionVariable.wait(lock, [](){ 
+      return sFinishedTx.load();
+    });
+  }
+
   static void push(char const * const aChunkStart) noexcept {
     sQueue->send(aChunkStart);
+    std::lock_guard<std::mutex> lock(sDataArrivedMutex);
+    sDataArrivedConditionVariable.notify_one();
   }
 
   static bool fetch(char * const aChunkStart) noexcept {
@@ -338,18 +347,19 @@ public:
     std::this_thread::sleep_for(std::chrono::milliseconds(sPauseLength));
   }
 
-  static void transmit(const char * const aBuffer, LogSizeType const aLength, std::atomic<bool> *aProgressFlag) noexcept {
+  static bool isTransmitDone() noexcept {
+    return sFinishedTx;
+  }
+
+  static void transmit(const char * const aBuffer, LogSizeType const aLength) noexcept {
     sOutput->write(aBuffer, aLength);
-    aProgressFlag->store(false);
+    std::lock_guard<std::mutex> lock(sFinishedTxMutex);
+    sFinishedTx = true;
+    sFinishedTxConditionVariable.notify_one();
   }
 
-  static void startRefreshTimer(std::atomic<bool> *aRefreshFlag) noexcept {
-    sRefreshNeeded = aRefreshFlag;
+  static void startRefreshTimer() noexcept {
     sRefreshTimer->start();
-  }
-
-  static void refreshNeeded() noexcept {
-    sRefreshNeeded->store(true);
   }
 };
 

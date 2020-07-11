@@ -176,9 +176,9 @@ int main() {
   std::thread threads[threadCount];
   
   nowtech::log::LogConfig logConfig;
-  logConfig.queueLength = 2222u; 
-  logConfig.circularBufferLength = 2222u;
-  logConfig.transmitBufferLength = 2222u;
+  logConfig.queueLength = 22222u; 
+  logConfig.circularBufferLength = 22222u;
+  logConfig.transmitBufferLength = 22222u;
   logConfig.taskRepresentation = nowtech::log::LogConfig::TaskRepresentation::cName;
   logConfig.refreshPeriod      = 200u;
   LogInterface::init(std::cout);
@@ -242,12 +242,12 @@ int main() {
   Log::i() << "bool:" << true << Log::end;
   Log::i() << "bool:" << false << Log::end;
 
-/*  for(int32_t i = 0; i < threadCount; ++i) {
-    threads[i] = std::thread(delayedLog, i);uu
+  for(int32_t i = 0; i < threadCount; ++i) {
+    threads[i] = std::thread(delayedLog, i);
   }
   for(int32_t i = 0; i < threadCount; ++i) {
     threads[i].join();
-  }*/
+  }
   Log::done();
   return 0;
 }

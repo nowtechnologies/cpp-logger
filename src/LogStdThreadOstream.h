@@ -38,6 +38,7 @@
 #include <condition_variable>
 #include <boost/lockfree/queue.hpp>
 
+  /*inline static*/ std::atomic<bool>             sKeepRunning = true;
 namespace nowtech::log {
 
 template<typename tLogSizeType, TaskIdType tMaxTaskCount, bool tBlocks = false, tLogSizeType tChunkSize = 8u>
@@ -102,9 +103,11 @@ private:
         char *payload;
         success = mFreeList.pop(payload);
         if(success) {
-          std::unique_lock<std::mutex> lock(mMutexDataArrived);
           std::copy(aChunkStart, aChunkStart + cChunkSize, payload);
-          sQueue.bounded_push(payload); // this should always succeed here
+          {
+            std::unique_lock<std::mutex> lock(mMutexDataArrived);
+            sQueue.bounded_push(payload); // this should always succeed here
+          }
           mConditionVariableDataArrived.notify_one();
         }
         else if(tBlocks) {
@@ -132,8 +135,10 @@ private:
         if(result) {
           std::copy(payload, payload + cChunkSize, aChunkStart);
           mFreeList.bounded_push(payload); // this should always succeed here
-          std::unique_lock<std::mutex> lock(mMutexDataProcessed);
-          mDataProcessed = true;
+          {
+            std::unique_lock<std::mutex> lock(mMutexDataProcessed);
+            mDataProcessed = true;
+          }
           mConditionVariableDataProcessed.notify_one();
         }
         else { // nothing to do
@@ -163,8 +168,10 @@ private:
     }
 
     ~FreeRtosTimer() noexcept {
-      std::unique_lock<std::mutex> lock(mMutex);
-      mKeepRunning = false;
+      {
+        std::unique_lock<std::mutex> lock(mMutex);
+        mKeepRunning = false;
+      }
       mConditionVariable.notify_one();
       mTask.join();
     }
@@ -188,8 +195,10 @@ private:
     }
 
     void start() noexcept {
-      std::unique_lock<std::mutex> lock(mMutex);
-      mAlarmed = true;
+      {
+        std::unique_lock<std::mutex> lock(mMutex);
+        mAlarmed = true;
+      }
       mConditionVariable.notify_one();
     }
   } *sRefreshTimer;
@@ -202,10 +211,9 @@ private:
 
   inline static std::mutex                    sFinishedTxMutex;
   inline static std::condition_variable       sFinishedTxConditionVariable;
-  inline static std::atomic<bool>             sFinishedTx = false;
+  inline static std::atomic<bool>             sFinishedTx = true;
   inline static std::mutex                    sDataArrivedMutex;
   inline static std::condition_variable       sDataArrivedConditionVariable;
-  inline static std::atomic<bool>             sKeepRunning = true;
   inline static std::mutex                    sRegistrationMutex;
 
   LogStdThreadOstream() = delete;
@@ -234,8 +242,10 @@ public:
   }
 
   static void done() {
-    sKeepRunning = false;
-    std::unique_lock<std::mutex> lock(sDataArrivedMutex);
+    {
+      std::unique_lock<std::mutex> lock(sDataArrivedMutex);
+      sKeepRunning = false;
+    }
     sDataArrivedConditionVariable.notify_one();
     sTransmitterTask->join();
     delete sTransmitterTask;
@@ -334,8 +344,10 @@ public:
   }
 
   static void push(char const * const aChunkStart) noexcept {
-    sQueue->send(aChunkStart);
-    std::lock_guard<std::mutex> lock(sDataArrivedMutex);
+    {
+      std::lock_guard<std::mutex> lock(sDataArrivedMutex);
+      sQueue->send(aChunkStart);
+    }
     sDataArrivedConditionVariable.notify_one();
   }
 
@@ -352,9 +364,12 @@ public:
   }
 
   static void transmit(const char * const aBuffer, LogSizeType const aLength) noexcept {
+    sFinishedTx = false;
     sOutput->write(aBuffer, aLength);
-    std::lock_guard<std::mutex> lock(sFinishedTxMutex);
-    sFinishedTx = true;
+    {
+      std::lock_guard<std::mutex> lock(sFinishedTxMutex);
+      sFinishedTx = true;
+    }
     sFinishedTxConditionVariable.notify_one();
   }
 

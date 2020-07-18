@@ -689,6 +689,20 @@ public:
     }
   }
 
+  static void fetchViaCircularAndTransmit() noexcept {
+    Chunk const &chunk = sCircularBuffer->fetch();
+    if(chunk.getTaskId() != cInvalidTaskId) {
+      if(sTransmitBuffers->getActiveTaskId() == chunk.getTaskId()) {
+        *sTransmitBuffers << chunk;
+      }
+      else {
+        sCircularBuffer->keepFetched();
+      }
+    }
+    else { // nothing to do
+    }
+  }
+
 // TODO supplement .cpp for FreeRTOS with extern "C"
   /// Transmitter thread implementation.
   static void transmitterTaskFunction() noexcept {
@@ -706,26 +720,21 @@ public:
         }
       }
       else { // There is a task in the transmitBuffers to be continued
-        if(sCircularBuffer->isEmpty() || (!sCircularBuffer->isFull() && sCircularBuffer->isInspected())) {
-          Chunk const &chunk = sCircularBuffer->fetch();
-          if(chunk.getTaskId() != cInvalidTaskId) {
-            if(sTransmitBuffers->getActiveTaskId() == chunk.getTaskId()) {
-              *sTransmitBuffers << chunk;
-            }
-            else {
-              sCircularBuffer->keepFetched();
-            }
-          }
-          else { // nothing to do
-          }
+        if(sCircularBuffer->isEmpty()) {
+          fetchViaCircularAndTransmit();
         }
-        else if(!sCircularBuffer->isFull() && !sCircularBuffer->isInspected()) {
-          Chunk const &chunk = sCircularBuffer->inspect(sTransmitBuffers->getActiveTaskId());
-          if(!sCircularBuffer->isInspected()) {
-            *sTransmitBuffers << chunk;
-            sCircularBuffer->removeFound();
+        else if(!sCircularBuffer->isFull()) {
+          if(sCircularBuffer->isInspected()) {
+            fetchViaCircularAndTransmit();
           }
-          else { // nothing to do
+          else {
+            Chunk const &chunk = sCircularBuffer->inspect(sTransmitBuffers->getActiveTaskId());
+            if(!sCircularBuffer->isInspected()) {
+              *sTransmitBuffers << chunk;
+              sCircularBuffer->removeFound();
+            }
+            else { // nothing to do
+            }
           }
         }
         else { // the circular buffer is full

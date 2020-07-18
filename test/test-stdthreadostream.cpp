@@ -186,8 +186,8 @@ int main() {
   Log::registerTopic(LogTopics::system, "system");
   Log::registerTopic(LogTopics::test, "test");
 
-  uint64_t const uint64 = 123456789012345;
-  int64_t const int64 = -123456789012345;
+  uint64_t const uint64 = 123456789012345ll;
+  int64_t const int64 = -123456789012345ll;
 
   Log::registerCurrentTask("main");
 

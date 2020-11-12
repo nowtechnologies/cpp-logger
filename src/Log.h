@@ -127,7 +127,6 @@ private:
   using TopicPrefix = char const *;
   
   static constexpr TaskId  csInvalidTaskId  = tSend::csInvalidTaskId;
-  static constexpr TaskId  csLocalTaskId    = tSend::csLocalTaskId;
   static constexpr TaskId  csMaxTaskIdCount = tSend::csMaxTaskCount + 1u;
 
   static constexpr LogTopic csFreeTopicIncrement = 1;
@@ -174,6 +173,59 @@ private:
 
   Log() = delete;
 
+  class LogShiftChainHelper final {
+    TaskId          mTaskId;
+    LogFormatEnd    mNextFormat;
+    MessageSequence mNextSequence;
+
+  public:
+    LogShiftChainHelper() noexcept = delete;
+
+    LogShiftChainHelper(TaskId& aTaskId) noexcept
+     : mTaskId(aTaskId)
+     , mNextSequence(0u) {
+    }
+
+    LogShiftChainHelper(TaskId& aTaskId, MessageSequence aNextSequence) noexcept
+     : mTaskId(aTaskId) 
+     , mNextSequence(aNextSequence){
+    }
+
+    bool isValid() const noexcept {
+      return mTaskId != csInvalidTaskId;
+    }
+
+    template<typename tValue>
+    LogShiftChainHelper& operator<<(tValue const aValue) noexcept {
+      if(mTaskId != csInvalidTaskId && mNextSequence < std::numeric_limits<MessageSequence>::max()) {
+        tMessage message;
+        message.set(aValue, mNextFormatEnd, mTaskId, mNextSequence);
+        tQueue::push(message);
+        mNextFormat.invalidate();
+        ++mNextSequence;
+      }
+      else { // silently discard value, nothing to do
+      }
+      return *this;
+    }
+
+    LogShiftChainHelper& operator<<(LogFormatEnd const aFormat) noexcept {
+      mNextFormat = aFormat;
+      return *this;
+    }
+
+    void operator<<(LogShiftChainMarker const) noexcept {
+      if(mTaskId != csInvalidTaskId) {
+        tMessage message;
+        message.invalidate(mNextSequence);
+        tQueue::push(message);
+      }
+      else { // nothing to do
+      }
+    }
+  }; // class LogShiftChainHelper
+  friend class LogShiftChainHelper;
+
 public:
   /// Will be used as Log << something << to << log << Log::end;
   static constexpr LogShiftChainMarker end = LogShiftChainMarker::cEnd;
@@ -213,7 +265,7 @@ public:
   /// Registers the current task if not already present. It can register
   /// at most 254 tasks. All others will be handled as one.
   /// @param aTaskName Task name to use, when the osInterface supports it.
-  static void registerCurrentTask(char const * const aTaskName) noexcept {
+  static void registerCurrentTask(char const * const aTaskName) {
     TaskId taskId = tAppInterface::registerCurrentTask(aTaskName);
     if(taskId != csInvalidTaskId) {
       if(sConfig->allowRegistrationLog) {
@@ -236,7 +288,7 @@ public:
     }
   }
 
-  static void registerTopic(LogTopicInstance &aTopic, char const * const aPrefix) noexcept {
+  static void registerTopic(LogTopicInstance &aTopic, char const * const aPrefix) {
     aTopic = sNextFreeTopic.fetch_add(cFreeTopicIncrement);
     if(aTopic >= tMaxTopicCount) {
       tAppInterface::fatalError(Exception::cOutOfTopics);
@@ -244,6 +296,109 @@ public:
     else {
       sRegisteredTopics[aTopic] = aPrefix;
     }
+  }
+  
+  static [[nodiscard]] TaskId getCurrentTaskId() noexcept {   // nodiscard because possibly expensive call
+    return tAppInterface::getCurrentTaskId(cLocalTaskId);
+  }
+
+  static LogShiftChainHelper i() noexcept {
+    TaskIdType const taskId = tAppInterface::getCurrentTaskId();
+    MessageSequence next = sendHeader(taskId);
+    return LogShiftChainHelper{taskId, next};
+  }
+
+  static LogShiftChainHelper i(TaskId const aTaskId) noexcept {
+    MessageSequence next = sendHeader(aTaskId);
+    return LogShiftChainHelper{aTaskId, next};
+  }
+
+  static LogShiftChainHelper i(LogTopic const aTopic) noexcept {
+    if(sRegisteredTopics[aTopic] != nullptr) {
+      TaskIdType const taskId = tAppInterface::getCurrentTaskId();
+      MessageSequence next = sendHeader(taskId, sRegisteredTopics[aTopic]);
+      return LogShiftChainHelper{taskId, next};
+    }
+    else {
+      return LogShiftChainHelper{csInvalidTaskId};
+    }
+  }
+
+  static LogShiftChainHelper i(LogTopic const aTopic, TaskId const aTaskId) noexcept {
+    if(sRegisteredTopics[aTopic] != nullptr) {
+      MessageSequence next = sendHeader(aTaskId, sRegisteredTopics[aTopic]);
+      return LogShiftChainHelper{aTaskId, next};
+    }
+    else {
+      return LogShiftChainHelper{csInvalidTaskId};
+    }
+  }
+
+  static LogShiftChainHelper n() noexcept {
+    return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
+  }
+
+  static LogShiftChainHelper n(TaskId const aTaskId) noexcept {
+    return LogShiftChainHelper{aTaskId};
+  }
+
+  static LogShiftChainHelper n(LogTopic const aTopic) noexcept {
+    if(sRegisteredTopics[aTopic] != nullptr) {
+      return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
+    }
+    else {
+      return LogShiftChainHelper{csInvalidTaskId};
+    }
+  }
+
+  static LogShiftChainHelper n(LogTopic const aTopic, TaskIdType const aTaskId) noexcept {
+    if(sRegisteredTopics[aTopic] != nullptr) {
+      return LogShiftChainHelper{aTaskId};
+    }
+    else {
+      return LogShiftChainHelper{csInvalidTaskId};
+    }
+  }
+
+private:
+  static MessageSequence sendHeader(TaskId const aTaskId) noexcept {
+    MessageSequence next = 0u;
+    if constexpr(tTaskRepresentation == TaskRepresentation::cId) {
+      tMessage message;
+      message.set(aTaskId, sConfig->taskIdFormat, aTaskId, next);
+      tQueue::push(message);
+      ++next;  
+    }
+    else if constexpr (tTaskRepresentation == TaskRepresentation::cName) {
+      tMessage message;
+      message.set(tAppInterface::getTaskName(aTaskId), sConfig->taskIdFormat, aTaskId, next);
+      tQueue::push(message);
+      ++next;
+    }
+    else { // nothing to do
+    }
+    if (sConfig->tickFormat.isValid()) {
+      tMessage message;
+      message.set(tAppInterface::getLogTime(), sConfig->tickFormat, aTaskId, next);
+      tQueue::push(message);
+      ++next;
+    }
+    else { // nothing to do
+    }
+    return next;
+  }
+
+  static MessageSequence sendHeader(TaskId const aTaskId, char const * aTopicName) noexcept {
+    MessageSequence next = sendHeader(aTaskId);
+    if(aTopicName != nullptr && aTopicName[0] != 0) {
+      tMessage message;
+      message.set(aTopicName, sConfig->taskIdFormat, aTaskId, next);
+      tQueue::push(message);
+      ++next;
+    }
+    else { // nothing to do
+    }
+    return next;
   }
 };
 

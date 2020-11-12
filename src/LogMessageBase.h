@@ -32,6 +32,10 @@ public:
     mFill = aFill;
   }
 
+  void setEnd(bool const aEnd) noexcept {
+    mBaseEnd |= (aEnd ? csEndMask : 0u);
+  }
+
   uint8_t getBaseEnd() const noexcept {
     return mBaseEnd;
   }
@@ -56,17 +60,22 @@ public:
     return mFill;
   }
 
-  /* bool isValidBase() const noexcept { TODO find out if needed
+  void invlidate() noexcept {
+    mBaseEnd = static_cast<uint8_t>(NumericBase::cInvalid);
+  }
+
+  bool isValid() const noexcept {
     auto base = static_cast<uint8_t>(mBaseEnd) & csBaseMask;
-    return base == static_cast<uint8_t>(NumericBaseEnd::cBinary)
-        || base == static_cast<uint8_t>(NumericBaseEnd::cDecimal)
-        || base == static_cast<uint8_t>(NumericBaseEnd::cHexadecimal);
-  }*/
+    return base == static_cast<uint8_t>(NumericBase::cBinary)
+        || base == static_cast<uint8_t>(NumericBase::cDecimal)
+        || base == static_cast<uint8_t>(NumericBase::cHexadecimal);
+  }
 };
 
 using TaskId          = uint8_t;
 using MessageSequence = uint8_t;
 
+/// A message may be terminal if contained LogFormatEnd.isTerminal or isTerminal()
 template<bool tSupport64>
 class MessageBase {
 protected:

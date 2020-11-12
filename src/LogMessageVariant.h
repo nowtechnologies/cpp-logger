@@ -11,8 +11,8 @@ namespace nowtech::log {
 // Will be copied using operator=
 template<bool tSupport64>
 class MessageVariant final : public MessageBase<tSupport64> {
-  using Payload32 std::variant<float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char*>;
-  using Payload64 std::variant<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char*>;
+  using Payload32 std::variant<std::monostate, float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char*>;
+  using Payload64 std::variant<std::monostate, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char*>;
   using Payload = std::conditional_t<tSupport64, Payload64, Payload32>;
   static_assert(std::is_trivially_copyable_t<Paylopad>);
 
@@ -27,6 +27,15 @@ public:
   MessageVariant(MessageVariant &&) = default;
   MessageVariant& operator=(MessageVariant const &) = default;
   MessageVariant& operator=(MessageVariant &&) = default;
+
+  void invalidate(MessageSequence const aMessageSequence) noexcept {
+    mPayload = std::monostate{};
+    mMessageSequence = aMessageSequence;
+  }
+
+  bool isValid() const noexcept {
+    return !std::holds_alternative<std::monostate>(mPayload);
+  }
 
   template<typename tArgument>
   void set(tArgument const aValue, LogFormatEnd const aFormatEnd, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {

@@ -7,7 +7,7 @@
 
 namespace nowtech::log {
 
-// Will be copied via taking the data pointer.
+// Will be copied via taking the data pointer. Here we go for size.
 template<bool tSupport64>
 class MessageCompact final : public MessageBase<tSupport64> {
 private:
@@ -52,9 +52,18 @@ public:
     return mData;
   }
 
+  void invalidate(MessageSequence const aMessageSequence) noexcept {
+    mData[csOffsetType] = static_cast<uint8_t>(Type::cInvalid);
+    mData[csOffsetMessageSequence] = aMessageSequence;
+  }
+
+  bool isValid() const noexcept {
+    return mData[csOffsetType] != static_cast<uint8_t>(Type::cInvalid);
+  }
+
   template<typename tArgument>
   void set(tArgument const aValue, LogFormatEnd const aFormatEnd, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
-    std::memcpy(mData + csOffsetPayload,         &aValue,           sizeof(aValue));
+    std::memcpy(mData + csOffsetPayload, &aValue, sizeof(aValue));
     setRest(aFormatEnd, aTaskId, aMessageSequence);
     Type type = getType<tArgument>();
     mData[csOffsetType] = static_cast<uint8_t>(type);

@@ -12,48 +12,24 @@ enum class NumericBase : uint8_t {
   cHexadecimal    = 16u
 };
 
-class LogFormatEnd final {
-private:
-  static constexpr uint8_t csBaseMask = 127u;
-  static constexpr uint8_t csEndMask  = 128u;
-
-  uint8_t mBaseEnd;    // TODO find out if these should have default values
+struct LogFormat final {
+public:
+  uint8_t mBase;
   uint8_t mFill;
 
-public:
-  LogFormatEnd() = default;
-  LogFormatEnd(LogFormatEnd const &) = default;
-  LogFormatEnd(LogFormatEnd &&) = default;
-  LogFormatEnd& operator=(LogFormatEnd const &) = default;
-  LogFormatEnd& operator=(LogFormatEnd &&) = default;
+  LogFormat() = default;
+  LogFormat(LogFormat const &) = default;
+  LogFormat(LogFormat &&) = default;
+  LogFormat& operator=(LogFormat const &) = default;
+  LogFormat& operator=(LogFormat &&) = default;
 
-  void set(NumericBase const aBase, bool const aEnd, uint8_t const aFill) noexcept {
-    mBaseEnd = static_cast<uint8_t>(aBase) | (aEnd ? csEndMask : 0u);
+  void set(NumericBase const aBase, uint8_t const aFill) noexcept {
+    mBase = static_cast<uint8_t>(aBase);
     mFill = aFill;
   }
 
-  void setEnd(bool const aEnd) noexcept {
-    mBaseEnd |= (aEnd ? csEndMask : 0u);
-  }
-
-  uint8_t getBaseEnd() const noexcept {
-    return mBaseEnd;
-  }
-
-  NumericBase getBase() const noexcept {
-    return static_cast<NumericBase>(mBaseEnd & csBaseMask);
-  }
-
-  static NumericBase uint2base(uint8_t const aBaseEnd) noexcept {
-    return static_cast<NumericBase>(aBaseEnd & csBaseMask);
-  }
-
-  bool isTerminal() const noexcept {
-    return (mBaseEnd & csEndMask) != 0u;
-  }
-
-  static bool uint2terminal(uint8_t const aBaseEnd) noexcept {
-    return (aBaseEnd & csEndMask) != 0u;
+  uint8_t getBase() const noexcept {
+    return mBase;
   }
 
   uint8_t getFill() const noexcept {
@@ -61,11 +37,11 @@ public:
   }
 
   void invlidate() noexcept {
-    mBaseEnd = static_cast<uint8_t>(NumericBase::cInvalid);
+    mBase = static_cast<uint8_t>(NumericBase::cInvalid);
   }
 
   bool isValid() const noexcept {
-    auto base = static_cast<uint8_t>(mBaseEnd) & csBaseMask;
+    auto base = static_cast<uint8_t>(mBase);
     return base == static_cast<uint8_t>(NumericBase::cBinary)
         || base == static_cast<uint8_t>(NumericBase::cDecimal)
         || base == static_cast<uint8_t>(NumericBase::cHexadecimal);
@@ -75,16 +51,18 @@ public:
 using TaskId          = uint8_t;
 using MessageSequence = uint8_t;
 
-/// A message may be terminal if contained LogFormatEnd.isTerminal or isTerminal()
 template<bool tSupport64>
 class MessageBase {
+public:
+  static constexpr MessageSequence csTerminal = 0u;
+
 protected:
   using LargestPayload = std::conditional_t<tSupport64, int64_t, int32_t>;
 
   static_assert(sizeof(float) <= sizeof(LargestPayload));
   static_assert(tSupport64 && sizeof(double) <= sizeof(LargestPayload));
   static_assert(sizeof(char*) <= sizeof(LargestPayload));
-  static_assert(sizeof(LogFormatEnd) == sizeof(int16_t));
+  static_assert(sizeof(LogFormat) == sizeof(int16_t));
 };
 
 } // namespace

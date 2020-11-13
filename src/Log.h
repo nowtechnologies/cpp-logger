@@ -22,11 +22,11 @@ enum class TaskRepresentation : uint8_t {
 
 typedef int8_t LogTopic; // this needs to be signed to let the overload resolution work
 
-template<typename tQueue, typename tSender, size_t tDirectBufferLength, LogTopic tMaxTopicCount, uint8_t tAppendStackBufferLength, TaskRepresentation tTaskRepresentation, bool tAppendBasePrefix, bool tAlignSigned>
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, uint8_t tAppendStackBufferLength, TaskRepresentation tTaskRepresentation, bool tAppendBasePrefix, bool tAlignSigned>
 class Log;
 
 class LogTopicInstance final {
-  template<typename tQueue, typename tSender, size_t tDirectBufferLength, LogTopic tMaxTopicCount, uint8_t tAppendStackBufferLength, TaskRepresentation tTaskRepresentation, bool tAppendBasePrefix, bool tAlignSigned>
+  template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, uint8_t tAppendStackBufferLength, TaskRepresentation tTaskRepresentation, bool tAppendBasePrefix, bool tAlignSigned>
   friend class Log;
 
 public:
@@ -57,74 +57,61 @@ public:
   /// system and the number represents the minimum digits to write, possibly
   /// with leading zeros. When formats are applied to floating point
   /// numbers, the numeric system info is discarded.
-  inline static constexpr LogFormatEnd cDefault = {10u, 0u };
-  inline static constexpr LogFormatEnd cInvalid = { 0u, 0u };
-  inline static constexpr LogFormatEnd cB4      = { 2u, 4u };
-  inline static constexpr LogFormatEnd cB8      = { 2u, 8u };
-  inline static constexpr LogFormatEnd cB12     = { 2u, 12u};
-  inline static constexpr LogFormatEnd cB16     = { 2u, 16u};
-  inline static constexpr LogFormatEnd cB24     = { 2u, 24u};
-  inline static constexpr LogFormatEnd cB32     = { 2u, 32u};
-  inline static constexpr LogFormatEnd cD1      = {10u,  1u};
-  inline static constexpr LogFormatEnd cD2      = {10u,  2u};
-  inline static constexpr LogFormatEnd cD3      = {10u,  3u};
-  inline static constexpr LogFormatEnd cD4      = {10u,  4u};
-  inline static constexpr LogFormatEnd cD5      = {10u,  5u};
-  inline static constexpr LogFormatEnd cD6      = {10u,  6u};
-  inline static constexpr LogFormatEnd cD7      = {10u,  7u};
-  inline static constexpr LogFormatEnd cD8      = {10u,  8u};
-  inline static constexpr LogFormatEnd cD16     = {10u, 16u};
-  inline static constexpr LogFormatEnd cX1      = {16u,  1u};
-  inline static constexpr LogFormatEnd cX2      = {16u,  2u};
-  inline static constexpr LogFormatEnd cX3      = {16u,  3u};
-  inline static constexpr LogFormatEnd cX4      = {16u,  4u};
-  inline static constexpr LogFormatEnd cX6      = {16u,  6u};
-  inline static constexpr LogFormatEnd cX8      = {16u,  8u};
-  inline static constexpr LogFormatEnd cX16     = {16u, 16u};
+  inline static constexpr LogFormat B4      { 2u, 4u };
+  inline static constexpr LogFormat B8      { 2u, 8u };
+  inline static constexpr LogFormat B12     { 2u, 12u};
+  inline static constexpr LogFormat B16     { 2u, 16u};
+  inline static constexpr LogFormat B24     { 2u, 24u};
+  inline static constexpr LogFormat B32     { 2u, 32u};
+  inline static constexpr LogFormat D1      {10u,  1u};
+  inline static constexpr LogFormat D2      {10u,  2u};
+  inline static constexpr LogFormat D3      {10u,  3u};
+  inline static constexpr LogFormat D4      {10u,  4u};
+  inline static constexpr LogFormat D5      {10u,  5u};
+  inline static constexpr LogFormat D6      {10u,  6u};
+  inline static constexpr LogFormat D7      {10u,  7u};
+  inline static constexpr LogFormat D8      {10u,  8u};
+  inline static constexpr LogFormat D16     {10u, 16u};
+  inline static constexpr LogFormat X1      {16u,  1u};
+  inline static constexpr LogFormat X2      {16u,  2u};
+  inline static constexpr LogFormat X3      {16u,  3u};
+  inline static constexpr LogFormat X4      {16u,  4u};
+  inline static constexpr LogFormat X6      {16u,  6u};
+  inline static constexpr LogFormat X8      {16u,  8u};
+  inline static constexpr LogFormat X16     {16u, 16u};
 
   /// If true, task registration will be sent to the output in the form
   /// in the form -=- Registered task: taskname (1) -=-
   bool allowRegistrationLog = true;
 
   /// Format for displaying the task ID in the message header.
-  LogFormatEnd taskIdFormat = cX2;
+  LogFormat taskIdFormat    = X2;
 
   /// Format for displaying the FreeRTOS ticks in the header, if any. Should be
-  /// LogFormatEnd::cInvalid to disable tick output.
-  LogFormatEnd tickFormat   = cD5;
-
-  /// These are default formats for some types.
-  LogFormatEnd int8Format       = cDefault;
-  LogFormatEnd int16Format      = cDefault;
-  LogFormatEnd int32Format      = cDefault;
-  LogFormatEnd int64Format      = cDefault;
-  LogFormatEnd uint8Format      = cDefault;
-  LogFormatEnd uint16Format     = cDefault;
-  LogFormatEnd uint32Format     = cDefault;
-  LogFormatEnd uint64Format     = cDefault;
-  LogFormatEnd floatFormat      = cD5;
-  LogFormatEnd doubleFormat     = cD8;
-  LogFormatEnd longDoubleFormat = cD16;
+  /// LogFormat::cInvalid to disable tick output.
+  LogFormat tickFormat      = D5;
+  LogFormat defaultFormat   = D5;
 
   LogConfig() noexcept = default;
 };
 
 /// Dummy type to use in << chain as end marker.
-enum class LogShiftChainMarker : uint8_t {
+enum class LogShiftChainEndMarker : uint8_t {
   cEnd      = 0u
 };
 
-template<typename tQueue, typename tSender, size_t tDirectBufferLength, LogTopic tMaxTopicCount, uint8_t tAppendStackBufferLength, TaskRepresentation tTaskRepresentation, bool tAppendBasePrefix, bool tAlignSigned>
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, uint8_t tAppendStackBufferLength, TaskRepresentation tTaskRepresentation, bool tAppendBasePrefix, bool tAlignSigned>
 class Log final {
 private:
   using tMessage = tQueue::tMessage;
   using tAppInterface = tSender::tAppInterface;
+  using tConverter = tSender::tConverter;
   using cSupport64 = tMessage::tSupport64;
-  using LogSize = tQueue::LogSize;
-  using cSendInBackground = tQueue::cSendInBackground;
+  using tLogSize = tQueue::tLogSize;
   using IntegerConversionUnsigned = std::conditional_t<Support64, uint64_t, uint32_t>;
   using IntegerConversionSigned = std::conditional_t<Support64, int64_t, int32_t>;
   using TopicPrefix = char const *;
+  bool  cSendInBackground = (tQueue::tDirectBufferLength == 0u);
   
   static constexpr TaskId  csInvalidTaskId  = tSend::csInvalidTaskId;
   static constexpr TaskId  csMaxTaskIdCount = tSend::csMaxTaskCount + 1u;
@@ -138,29 +125,14 @@ private:
   static_assert(tSend::csMaxTaskCount < std::numeric_limits<TaskId>::max() - 1u);
   static_assert(tSend::csMaxTaskCount == csLocalTaskId);
 
-  static constexpr char csNumericError            = '#';
-
-  static constexpr char csEndOfMessage            = '\r';
-  static constexpr char csEndOfLine               = '\n';
-  static constexpr char csNumericFill             = '0';
-  static constexpr char csNumericMarkBinary       = 'b';
-  static constexpr char csNumericMarkHexadecimal  = 'x';
-  static constexpr char csMinus                   = '-';
-  static constexpr char csSpace                   = ' ';
-  static constexpr char csSeparatorFailure        = '@';
-  static constexpr char csFractionDot             = '.';
-  static constexpr char csPlus                    = '+';
-  static constexpr char csScientificE             = 'e';
-
-
-  inline static constexpr char csNan[]               = "nan";
-  inline static constexpr char csInf[]               = "inf";
   inline static constexpr char csRegisteredTask[]    = "-=- Registered task: ";
   inline static constexpr char csUnregisteredTask[]  = "-=- Unregistered task: ";
   inline static constexpr char csStringToLogOnDone[] = "\n";
   inline static constexpr char csUnknownTaskName[]   = "UNKNOWN";
   inline static constexpr char csAnonymousTaskName[] = "ANONYMOUS";
   inline static constexpr char csIsrTaskName[]       = "ISR";
+
+  // TODO handle ISR and these custom names
 
 
   inline static constexpr char csDigit2char[static_cast<uint8_t>(NumericSystem::cHexadecimal)] = {
@@ -173,34 +145,45 @@ private:
 
   Log() = delete;
 
-  class LogShiftChainHelper final {
+  /// This will be used to send via queue. It stores the first message, and sends it only with the terminal marker.
+  class LogShiftChainHelperBackgroundSend final {
     TaskId          mTaskId;
-    LogFormatEnd    mNextFormat;
+    LogFormat       mNextFormat;
     MessageSequence mNextSequence;
+    tMessage        mFirstMessage;
 
   public:
-    LogShiftChainHelper() noexcept = delete;
+    LogShiftChainHelperBackgroundSend() noexcept = delete;
 
-    LogShiftChainHelper(TaskId& aTaskId) noexcept
+    LogShiftChainHelperBackgroundSend(TaskId& aTaskId) noexcept
      : mTaskId(aTaskId)
      , mNextSequence(0u) {
+       mNextFormat.invalidate();
     }
 
-    LogShiftChainHelper(TaskId& aTaskId, MessageSequence aNextSequence) noexcept
-     : mTaskId(aTaskId) 
-     , mNextSequence(aNextSequence){
-    }
-
+    /// Can be used in application code to eliminate further operator<< calls when the topic is disabled.
     bool isValid() const noexcept {
       return mTaskId != csInvalidTaskId;
     }
 
     template<typename tValue>
-    LogShiftChainHelper& operator<<(tValue const aValue) noexcept {
+    LogShiftChainHelperBackgroundSend& operator<<(tValue const aValue) noexcept {
       if(mTaskId != csInvalidTaskId && mNextSequence < std::numeric_limits<MessageSequence>::max()) {
+        LogFormat format;
+        if(mNextFormat.isValid()) {
+          format = mNextFormat;
+        }
+        else {
+          format = sConfig->defaultFormat;
+        }
         tMessage message;
-        message.set(aValue, mNextFormatEnd, mTaskId, mNextSequence);
-        tQueue::push(message);
+        message.set(aValue, format, mTaskId, mNextSequence);
+        if(mNextSequence == 0u) {
+          mFirstMessage = message;
+        }
+        else {
+          tQueue::push(message);
+        }
         mNextFormat.invalidate();
         ++mNextSequence;
       }
@@ -209,26 +192,24 @@ private:
       return *this;
     }
 
-    LogShiftChainHelper& operator<<(LogFormatEnd const aFormat) noexcept {
+    LogShiftChainHelperBackgroundSend& operator<<(LogFormat const aFormat) noexcept {
       mNextFormat = aFormat;
       return *this;
     }
 
-    void operator<<(LogShiftChainMarker const) noexcept {
+    void operator<<(LogShiftChainEndMarker const) noexcept {
       if(mTaskId != csInvalidTaskId) {
-        tMessage message;
-        message.invalidate(mNextSequence);
-        tQueue::push(message);
+        tQueue::push(mFirstMessage);
       }
       else { // nothing to do
       }
     }
-  }; // class LogShiftChainHelper
-  friend class LogShiftChainHelper;
+  }; // class LogShiftChainHelperBackgroundSend
+  friend class LogShiftChainHelperBackgroundSend;
 
 public:
   /// Will be used as Log << something << to << log << Log::end;
-  static constexpr LogShiftChainMarker end = LogShiftChainMarker::cEnd;
+  static constexpr LogShiftChainEndMarker end = LogShiftChainEndMarker::cEnd;
 
   // TODO remark in docs: must come before registering topics
   static void init(LogConfig const &aConfig) {
@@ -302,104 +283,113 @@ public:
     return tAppInterface::getCurrentTaskId(cLocalTaskId);
   }
 
-  static LogShiftChainHelper i() noexcept {
+  // Background sender functions.
+
+  template <typename tDummy = LogShiftChainHelperBackgroundSend>
+  static auto i() -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
     TaskIdType const taskId = tAppInterface::getCurrentTaskId();
-    MessageSequence next = sendHeader(taskId);
-    return LogShiftChainHelper{taskId, next};
+    return sendHeaderBackground(taskId);
   }
 
-  static LogShiftChainHelper i(TaskId const aTaskId) noexcept {
-    MessageSequence next = sendHeader(aTaskId);
-    return LogShiftChainHelper{aTaskId, next};
+  template <typename tDummy = LogShiftChainHelperBackgroundSend>
+  static auto i(TaskId const aTaskId) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
+    return sendHeaderBackground(aTaskId);
   }
 
-  static LogShiftChainHelper i(LogTopic const aTopic) noexcept {
+  template <typename tDummy = LogShiftChainHelperBackgroundSend>
+  static auto i(LogTopic const aTopic) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
     if(sRegisteredTopics[aTopic] != nullptr) {
       TaskIdType const taskId = tAppInterface::getCurrentTaskId();
-      MessageSequence next = sendHeader(taskId, sRegisteredTopics[aTopic]);
-      return LogShiftChainHelper{taskId, next};
+      return sendHeaderBackground(taskId, sRegisteredTopics[aTopic]);
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return sendHeaderBackground(csInvalidTaskId);
     }
   }
 
-  static LogShiftChainHelper i(LogTopic const aTopic, TaskId const aTaskId) noexcept {
+  template <typename tDummy = LogShiftChainHelperBackgroundSend>
+  static auto i(LogTopic const aTopic, TaskId const aTaskId) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
     if(sRegisteredTopics[aTopic] != nullptr) {
-      MessageSequence next = sendHeader(aTaskId, sRegisteredTopics[aTopic]);
-      return LogShiftChainHelper{aTaskId, next};
+      return sendHeaderBackground(aTaskId, sRegisteredTopics[aTopic]);
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return sendHeaderBackground(csInvalidTaskId);
     }
   }
 
-  static LogShiftChainHelper n() noexcept {
-    return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
+  template <typename tDummy = LogShiftChainHelperBackgroundSend>
+  static auto n() -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
+    return LogShiftChainHelperBackgroundSend{tAppInterface::getCurrentTaskId()};
   }
 
-  static LogShiftChainHelper n(TaskId const aTaskId) noexcept {
-    return LogShiftChainHelper{aTaskId};
+  template <typename tDummy = LogShiftChainHelperBackgroundSend>
+  static auto n(TaskId const aTaskId) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
+    return LogShiftChainHelperBackgroundSend{aTaskId};
   }
 
-  static LogShiftChainHelper n(LogTopic const aTopic) noexcept {
+  template <typename tDummy = LogShiftChainHelperBackgroundSend>
+  static auto n(LogTopic const aTopic) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
     if(sRegisteredTopics[aTopic] != nullptr) {
-      return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
+      return LogShiftChainHelperBackgroundSend{tAppInterface::getCurrentTaskId()};
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return LogShiftChainHelperBackgroundSend{csInvalidTaskId};
     }
   }
 
-  static LogShiftChainHelper n(LogTopic const aTopic, TaskIdType const aTaskId) noexcept {
+  template <typename tDummy = LogShiftChainHelperBackgroundSend>
+  static auto n(LogTopic const aTopic, TaskIdType const aTaskId) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
     if(sRegisteredTopics[aTopic] != nullptr) {
-      return LogShiftChainHelper{aTaskId};
+      return LogShiftChainHelperBackgroundSend{aTaskId};
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return LogShiftChainHelperBackgroundSend{csInvalidTaskId};
     }
   }
+
+  // Now come the direct sender functions.
+
+  
 
 private:
-  static MessageSequence sendHeader(TaskId const aTaskId) noexcept {
-    MessageSequence next = 0u;
-    if constexpr(tTaskRepresentation == TaskRepresentation::cId) {
-      tMessage message;
-      message.set(aTaskId, sConfig->taskIdFormat, aTaskId, next);
-      tQueue::push(message);
-      ++next;  
-    }
-    else if constexpr (tTaskRepresentation == TaskRepresentation::cName) {
-      tMessage message;
-      message.set(tAppInterface::getTaskName(aTaskId), sConfig->taskIdFormat, aTaskId, next);
-      tQueue::push(message);
-      ++next;
-    }
-    else { // nothing to do
-    }
-    if (sConfig->tickFormat.isValid()) {
-      tMessage message;
-      message.set(tAppInterface::getLogTime(), sConfig->tickFormat, aTaskId, next);
-      tQueue::push(message);
-      ++next;
+  // Background header creation.
+
+  template <typename tDummy = LogShiftChainHelperBackgroundSend>
+  static auto sendHeaderBackground(TaskId const aTaskId) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
+    LogShiftChainHelperBackgroundSend result{aTaskId};
+    if(result.isValid()) {
+      if constexpr(tTaskRepresentation == TaskRepresentation::cId) {
+        result << sConfig->taskIdFormat << aTaskId;
+      }
+      else if constexpr (tTaskRepresentation == TaskRepresentation::cName) {
+        result << tAppInterface::getTaskName(aTaskId);
+      }
+      else { // nothing to do
+      }
+      if (sConfig->tickFormat.isValid()) {
+        result << sConfig->tickFormat << tAppInterface::getLogTime();
+      }
+      else { // nothing to do
+      }
     }
     else { // nothing to do
     }
-    return next;
+    return result;
   }
 
-  static MessageSequence sendHeader(TaskId const aTaskId, char const * aTopicName) noexcept {
-    MessageSequence next = sendHeader(aTaskId);
+  template <typename tDummy = LogShiftChainHelperBackgroundSend>
+  static auto sendHeaderBackground(TaskId const aTaskId, char const * aTopicName) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
+    LogShiftChainHelperBackgroundSend result{aTaskId} = sendHeaderBackground(aTaskId);
     if(aTopicName != nullptr && aTopicName[0] != 0) {
-      tMessage message;
-      message.set(aTopicName, sConfig->taskIdFormat, aTaskId, next);
-      tQueue::push(message);
-      ++next;
+      result << sConfig->taskIdFormat;
     }
     else { // nothing to do
     }
-    return next;
+    return result;
   }
+
+  // Direct header creation.
+
 };
 
 }

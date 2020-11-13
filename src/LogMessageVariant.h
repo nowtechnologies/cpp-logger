@@ -11,13 +11,13 @@ namespace nowtech::log {
 // Will be copied using operator=
 template<bool tSupport64>
 class MessageVariant final : public MessageBase<tSupport64> {
-  using Payload32 std::variant<std::monostate, float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char*>;
-  using Payload64 std::variant<std::monostate, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char*>;
+  using Payload32 std::variant<float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char, char*>;
+  using Payload64 std::variant<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char*>;
   using Payload = std::conditional_t<tSupport64, Payload64, Payload32>;
   static_assert(std::is_trivially_copyable_t<Paylopad>);
 
   Payload         mPayload;
-  LogFormatEnd    mFormatEnd;
+  LogFormat    mFormat;
   TaskId          mTaskId;
   MessageSequence mMessageSequence;
 
@@ -28,39 +28,30 @@ public:
   MessageVariant& operator=(MessageVariant const &) = default;
   MessageVariant& operator=(MessageVariant &&) = default;
 
-  void invalidate(MessageSequence const aMessageSequence) noexcept {
-    mPayload = std::monostate{};
-    mMessageSequence = aMessageSequence;
-  }
-
-  bool isValid() const noexcept {
-    return !std::holds_alternative<std::monostate>(mPayload);
-  }
-
   template<typename tArgument>
-  void set(tArgument const aValue, LogFormatEnd const aFormatEnd, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
+  void set(tArgument const aValue, LogFormat const aFormat, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
     mPayload = aValue;
-    mFormatEnd = aFormatEnd;
+    mFormat = aFormat;
     mTaskId = aTaskId;
     mMessageSequence = aMessageSequence;
   }
 
-  template<typename tDispatcher>
-  void output() const noexcept {
-    auto visitor = [](const auto aObj) { tDispatcher::transfer(aObj); };
+  template<typename tConverter>
+  void output(tConverter& aConverter) const noexcept {
+    auto visitor = [mFormat](const auto aObj) { aConverter.convert(aObj, mFormat.getBase(), mFormat.getFill()); };
     std::visit(visitor, mPayload);
   }
 
   bool isTerminal() const noexcept {
-    return mFormatEnd.isTerminal();
+    return mMessageSequence == csTerminal;
   }
 
   uint8_t getBase() const noexcept {
-    return mFormatEnd.getBase();
+    return mFormat.getBase();
   }  
 
   uint8_t getFill() const noexcept {
-    return mFormatEnd.getFill();
+    return mFormat.getFill();
   }  
 
   TaskId getTaskId() const noexcept {

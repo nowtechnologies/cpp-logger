@@ -22,11 +22,11 @@ enum class TaskRepresentation : uint8_t {
 
 typedef int8_t LogTopic; // this needs to be signed to let the overload resolution work
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, uint8_t tAppendStackBufferLength, TaskRepresentation tTaskRepresentation, bool tAppendBasePrefix, bool tAlignSigned>
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation>
 class Log;
 
 class LogTopicInstance final {
-  template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, uint8_t tAppendStackBufferLength, TaskRepresentation tTaskRepresentation, bool tAppendBasePrefix, bool tAlignSigned>
+  template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation>
   friend class Log;
 
 public:
@@ -100,18 +100,16 @@ enum class LogShiftChainEndMarker : uint8_t {
   cEnd      = 0u
 };
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, uint8_t tAppendStackBufferLength, TaskRepresentation tTaskRepresentation, bool tAppendBasePrefix, bool tAlignSigned>
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation>
 class Log final {
 private:
+  static constexpr bool csSendInBackground = (tQueue::tDirectBufferLength == 0u);
   using tMessage = tQueue::tMessage;
+  static constexpr bool csSupport64 = tMessage::tSupport64;
   using tAppInterface = tSender::tAppInterface;
   using tConverter = tSender::tConverter;
-  using cSupport64 = tMessage::tSupport64;
   using tLogSize = tQueue::tLogSize;
-  using IntegerConversionUnsigned = std::conditional_t<Support64, uint64_t, uint32_t>;
-  using IntegerConversionSigned = std::conditional_t<Support64, int64_t, int32_t>;
   using TopicPrefix = char const *;
-  bool  cSendInBackground = (tQueue::tDirectBufferLength == 0u);
   
   static constexpr TaskId  csInvalidTaskId  = tSend::csInvalidTaskId;
   static constexpr TaskId  csMaxTaskIdCount = tSend::csMaxTaskCount + 1u;
@@ -133,11 +131,6 @@ private:
   inline static constexpr char csIsrTaskName[]       = "ISR";
 
   // TODO handle ISR and these custom names
-
-
-  inline static constexpr char csDigit2char[static_cast<uint8_t>(NumericSystem::cHexadecimal)] = {
-    '0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'
-  };
 
   inline static LogConfig const * sConfig;
   inline static std::atomic<LogTopic> sNextFreeTopic = csFirstFreeTopic;

@@ -1,16 +1,9 @@
 #ifndef NOWTECH_LOG_MESSAGE_BASE
 #define NOWTECH_LOG_MESSAGE_BASE
 
-#include <cstdint>
+#include "LogNumericSystem.h"
 
 namespace nowtech::log {
-
-enum class NumericBase : uint8_t {
-  cInvalid        =  0u,
-  cBinary         =  2u,
-  cDecimal        = 10u,
-  cHexadecimal    = 16u
-};
 
 struct LogFormat final {
 public:
@@ -23,11 +16,6 @@ public:
   LogFormat& operator=(LogFormat const &) = default;
   LogFormat& operator=(LogFormat &&) = default;
 
-  void set(NumericBase const aBase, uint8_t const aFill) noexcept {
-    mBase = static_cast<uint8_t>(aBase);
-    mFill = aFill;
-  }
-
   uint8_t getBase() const noexcept {
     return mBase;
   }
@@ -37,21 +25,18 @@ public:
   }
 
   void invlidate() noexcept {
-    mBase = static_cast<uint8_t>(NumericBase::cInvalid);
+    mBase = NumericSystem::csInvalid;
   }
 
   bool isValid() const noexcept {
-    auto base = static_cast<uint8_t>(mBase);
-    return base == static_cast<uint8_t>(NumericBase::cBinary)
-        || base == static_cast<uint8_t>(NumericBase::cDecimal)
-        || base == static_cast<uint8_t>(NumericBase::cHexadecimal);
+    return mBase <= NumericSystem::csBaseMax;
   }
 };
 
 using TaskId          = uint8_t;
 using MessageSequence = uint8_t;
 
-template<bool tSupport64>
+template<typename tSupport64>
 class MessageBase {
 public:
   static constexpr MessageSequence csTerminal = 0u;

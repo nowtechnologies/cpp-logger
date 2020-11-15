@@ -100,15 +100,15 @@ enum class LogShiftChainEndMarker : uint8_t {
   cEnd      = 0u
 };
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation>
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferLength>
 class Log final {
 private:
-  static constexpr bool csSendInBackground = (tQueue::tDirectBufferLength == 0u);
+  static constexpr bool csSendInBackground = (tDirectBufferLength == 0u); // will omit tQueue
   using tMessage = tQueue::tMessage;
   static constexpr bool csSupport64 = tMessage::tSupport64;
   using tAppInterface = tSender::tAppInterface;
   using tConverter = tSender::tConverter;
-  using tLogSize = tQueue::tLogSize;
+  using ConversionResult = tConverter::ConversionResult;
   using TopicPrefix = char const *;
   
   static constexpr TaskId  csInvalidTaskId  = tSend::csInvalidTaskId;
@@ -118,23 +118,23 @@ private:
   static constexpr LogTopic csFirstFreeTopic = 0;
 
   static_assert(tMaxTopicCount <= std::numeric_limits<LogTopic>::max());
-  static_assert(std::is_unsigned_v<LogSize>);
   static_assert(cInvalidTaskId == std::numeric_limits<TaskId>::max());
   static_assert(tSend::csMaxTaskCount < std::numeric_limits<TaskId>::max() - 1u);
   static_assert(tSend::csMaxTaskCount == csLocalTaskId);
 
   inline static constexpr char csRegisteredTask[]    = "-=- Registered task: ";
   inline static constexpr char csUnregisteredTask[]  = "-=- Unregistered task: ";
-  inline static constexpr char csStringToLogOnDone[] = "\n";
+  /*
+  TODO these go in tAppInterface.
   inline static constexpr char csUnknownTaskName[]   = "UNKNOWN";
   inline static constexpr char csAnonymousTaskName[] = "ANONYMOUS";
   inline static constexpr char csIsrTaskName[]       = "ISR";
 
-  // TODO handle ISR and these custom names
+  TODO tAppInterface::getCurrentTaskId() returns 0 if ISR and it is enabled. If disabled, csInvalidTaskId.
+  TODO similar is for getTaskName() - if in ISR, returns "ISR" */
 
   inline static LogConfig const * sConfig;
   inline static std::atomic<LogTopic> sNextFreeTopic = csFirstFreeTopic;
-  inline static Appender* sShiftChainingAppenders;
 
   Log() = delete;
 
@@ -198,7 +198,67 @@ private:
       }
     }
   }; // class LogShiftChainHelperBackgroundSend
-  friend class LogShiftChainHelperBackgroundSend;
+
+  /// This will be used to send directly, blocking the current thread.
+  class LogShiftChainHelperDirectSend final {
+    TaskId          mTaskId;
+    LogFormat       mNextFormat;
+
+  public:
+    LogShiftChainHelperDirectSend() noexcept = delete;
+
+    LogShiftChainHelperDirectSend(TaskId& aTaskId) noexcept
+     : mTaskId(aTaskId) {
+       mNextFormat.invalidate();
+    }
+
+    /// Can be used in application code to eliminate further operator<< calls when the topic is disabled.
+    bool isValid() const noexcept {
+      return mTaskId != csInvalidTaskId;
+    }
+
+    template<typename tValue>
+    LogShiftChainHelperDirectSend& operator<<(tValue const aValue) noexcept {
+      if(mTaskId != csInvalidTaskId) {
+        LogFormat format;
+        if(mNextFormat.isValid()) {
+          format = mNextFormat;
+        }
+        else {
+          format = sConfig->defaultFormat;
+        }
+        ConversionResult buffer[tDirectBufferLength];
+        tConverter converter(buffer, buffer + tDirectBufferLength);
+        converter.convert(aValue);
+        tAppInterface::lock();
+        tSender::send(buffer, converter.end());
+        tAppInterface::unlock();
+      }
+      else { // silently discard value, nothing to do
+      }
+      return *this;
+    }
+
+    LogShiftChainHelperDirectSend& operator<<(LogFormat const aFormat) noexcept {
+      mNextFormat = aFormat;
+      return *this;
+    }
+
+    void operator<<(LogShiftChainEndMarker const) noexcept {
+      if(mTaskId != csInvalidTaskId) {
+        ConversionResult buffer[tDirectBufferLength];
+        tConverter converter(buffer, buffer + tDirectBufferLength);
+        converter.terminateSequence();
+        tAppInterface::lock();
+        tSender::send(buffer, converter.end());
+        tAppInterface::unlock();
+      }
+      else { // nothing to do
+      }
+    }
+  }; // class LogShiftChainHelperDirectSend
+
+  using LogShiftChainHelper = std::conditional_t<csSendInBackground, LogShiftChainHelperBackgroundSend, LogShiftChainHelperDirectSend>;
 
 public:
   /// Will be used as Log << something << to << log << Log::end;
@@ -215,7 +275,6 @@ public:
     }
     tSender::init();
     tQueue::init();
-    sShiftChainingAppenders = tAppInterface::template _newArray<Appender>(cMaxTaskIdCount);
     sRegisteredTopics = tAppInterface::template _newArray<TopicPrefix>(tMaxTopicCount);
     std::fill_n(sRegisteredTopics, tMaxTopicCount, nullptr);
   }
@@ -225,8 +284,7 @@ public:
     tQueue::done();
     tSender::done();
     tAppInterface::done();
-    tAppInterface::template _deleteArray<Appender>(sShiftChainingAppenders);
-    tAppInterface::template _deleteArray<Appender>(sRegisteredTopics);
+    tAppInterface::template _deleteArray<TopicPrefix>(sRegisteredTopics);
   }
 
   /// Registers the current task if not already present. It can register
@@ -243,7 +301,7 @@ public:
     TaskId taskId = tAppInterface::registerCurrentTask(aTaskName);
     if(taskId != csInvalidTaskId) {
       if(sConfig->allowRegistrationLog) {
-        // TODO log it
+        n() << csRegisteredTask << aTaskName << taskId << end;
       }
       else { // nothing to do
       }
@@ -256,7 +314,7 @@ public:
   static void unregisterCurrentTask() noexcept {
     TaskId taskId = tAppInterface::unregisterCurrentTask();
     if(taskId != cInvalidTaskId && sConfig->allowRegistrationLog) {
-      // TODO log it
+      n() << csRegisteredTask << tAppInterface::getTaskName(taskId) << taskId << end;
     }
     else { // nothing to do
     }
@@ -276,80 +334,63 @@ public:
     return tAppInterface::getCurrentTaskId(cLocalTaskId);
   }
 
-  // Background sender functions.
-
-  template <typename tDummy = LogShiftChainHelperBackgroundSend>
-  static auto i() -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
+  static auto i() noexcept {
     TaskIdType const taskId = tAppInterface::getCurrentTaskId();
-    return sendHeaderBackground(taskId);
+    return sendHeader(taskId);
   }
 
-  template <typename tDummy = LogShiftChainHelperBackgroundSend>
-  static auto i(TaskId const aTaskId) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
-    return sendHeaderBackground(aTaskId);
+  static LogShiftChainHelper i(TaskId const aTaskId) noexcept {
+    return sendHeader(aTaskId);
   }
 
-  template <typename tDummy = LogShiftChainHelperBackgroundSend>
-  static auto i(LogTopic const aTopic) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
+  static LogShiftChainHelper i(LogTopic const aTopic) noexcept {
     if(sRegisteredTopics[aTopic] != nullptr) {
       TaskIdType const taskId = tAppInterface::getCurrentTaskId();
-      return sendHeaderBackground(taskId, sRegisteredTopics[aTopic]);
+      return sendHeader(taskId, sRegisteredTopics[aTopic]);
     }
     else {
-      return sendHeaderBackground(csInvalidTaskId);
+      return sendHeader(csInvalidTaskId);
     }
   }
 
-  template <typename tDummy = LogShiftChainHelperBackgroundSend>
-  static auto i(LogTopic const aTopic, TaskId const aTaskId) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
+  static LogShiftChainHelper i(LogTopic const aTopic, TaskId const aTaskId) noexcept {
     if(sRegisteredTopics[aTopic] != nullptr) {
-      return sendHeaderBackground(aTaskId, sRegisteredTopics[aTopic]);
+      return sendHeader(aTaskId, sRegisteredTopics[aTopic]);
     }
     else {
-      return sendHeaderBackground(csInvalidTaskId);
+      return sendHeader(csInvalidTaskId);
     }
   }
 
-  template <typename tDummy = LogShiftChainHelperBackgroundSend>
-  static auto n() -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
-    return LogShiftChainHelperBackgroundSend{tAppInterface::getCurrentTaskId()};
+  static LogShiftChainHelper n() noexcept {
+    return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
   }
 
-  template <typename tDummy = LogShiftChainHelperBackgroundSend>
-  static auto n(TaskId const aTaskId) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
-    return LogShiftChainHelperBackgroundSend{aTaskId};
+  static LogShiftChainHelper n(TaskId const aTaskId) noexcept {
+    return LogShiftChainHelper{aTaskId};
   }
 
-  template <typename tDummy = LogShiftChainHelperBackgroundSend>
-  static auto n(LogTopic const aTopic) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
+  static LogShiftChainHelper n(LogTopic const aTopic) noexcept {
     if(sRegisteredTopics[aTopic] != nullptr) {
-      return LogShiftChainHelperBackgroundSend{tAppInterface::getCurrentTaskId()};
+      return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
     }
     else {
-      return LogShiftChainHelperBackgroundSend{csInvalidTaskId};
+      return LogShiftChainHelper{csInvalidTaskId};
     }
   }
 
-  template <typename tDummy = LogShiftChainHelperBackgroundSend>
-  static auto n(LogTopic const aTopic, TaskIdType const aTaskId) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
+  static LogShiftChainHelper n(LogTopic const aTopic, TaskIdType const aTaskId) noexcept {
     if(sRegisteredTopics[aTopic] != nullptr) {
-      return LogShiftChainHelperBackgroundSend{aTaskId};
+      return LogShiftChainHelper{aTaskId};
     }
     else {
-      return LogShiftChainHelperBackgroundSend{csInvalidTaskId};
+      return LogShiftChainHelper{csInvalidTaskId};
     }
   }
-
-  // Now come the direct sender functions.
-
-  
 
 private:
-  // Background header creation.
-
-  template <typename tDummy = LogShiftChainHelperBackgroundSend>
-  static auto sendHeaderBackground(TaskId const aTaskId) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
-    LogShiftChainHelperBackgroundSend result{aTaskId};
+  static LogShiftChainHelper sendHeader(TaskId const aTaskId) noexcept {
+    LogShiftChainHelper result{aTaskId};
     if(result.isValid()) {
       if constexpr(tTaskRepresentation == TaskRepresentation::cId) {
         result << sConfig->taskIdFormat << aTaskId;
@@ -370,9 +411,8 @@ private:
     return result;
   }
 
-  template <typename tDummy = LogShiftChainHelperBackgroundSend>
-  static auto sendHeaderBackground(TaskId const aTaskId, char const * aTopicName) -> std::enable_if_t<cSendInBackground, tDummy> noexcept {
-    LogShiftChainHelperBackgroundSend result{aTaskId} = sendHeaderBackground(aTaskId);
+  static LogShiftChainHelper sendHeader(TaskId const aTaskId, char const * aTopicName) noexcept {
+    LogShiftChainHelper result{aTaskId} = sendHeader(aTaskId);
     if(aTopicName != nullptr && aTopicName[0] != 0) {
       result << sConfig->taskIdFormat;
     }
@@ -380,8 +420,6 @@ private:
     }
     return result;
   }
-
-  // Direct header creation.
 
 };
 

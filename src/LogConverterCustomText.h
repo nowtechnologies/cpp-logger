@@ -2,14 +2,17 @@
 #define NOWTECH_LOG_CONVERTER_CUSTOM_CHARACTER
 
 #include "LogNumericSystem.h"
+#include <cmath>
 
 namespace nowtech::log {
 
 // TODO for concept: unused parameters (with no name) don't get filled in a call
 
+// TODO some solution for non-literal character arrays and/or std::strings
+
 /// Independent of STL
-template<bool tArchitecture64, uint8_t tAppendStackBufferLength, bool tAppendBasePrefix, bool tAlignSigned>
-class LogConverterCustomText final {
+template<bool tArchitecture64, uint8_t tAppendStackBufferSize, bool tAppendBasePrefix, bool tAlignSigned>
+class ConverterCustomText final {
 public:
   using ConversionResult = char; 
 
@@ -38,10 +41,15 @@ private:
   Iterator const mEnd;
 
 public:
-  LogConverterCustomText(Iterator aBegin, Iterator const aEnd) noexcept
+  ConverterCustomText(Iterator aBegin, Iterator const aEnd) noexcept
   : mBegin(aBegin)
   , mEnd(aEnd) {
   }
+
+  ConverterCustomText(ConverterCustomText const &) = delete;
+  ConverterCustomText(ConverterCustomText &&) = delete;
+  ConverterCustomText& operator=(ConverterCustomText const &) = delete;
+  ConverterCustomText& operator=(ConverterCustomText &&) = delete;
 
   Iterator end() const noexcept {
     return mBegin;
@@ -49,43 +57,47 @@ public:
 
 // TODO these should emit as many digits as reasonable when fill is 0
   void convert(float const aValue, uint8_t const, uint8_t const aFill) noexcept {
-    append(aAppender, static_cast<double>(aValue), aFormat.fill);
+    append(static_cast<long double>(aValue), aFill);
   }
 
   void convert(double const aValue, uint8_t const, uint8_t const aFill) noexcept {
-    append(aAppender, aValue, aFormat.fill);
+    append(static_cast<long double>(aValue), aFill);
+  }
+
+  void convert(long double const aValue, uint8_t const, uint8_t const aFill) noexcept {
+    append(aValue, aFill);
   }
 
   void convert(uint8_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
-    append(aAppender, static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aBase), aFill);
+    append(static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aBase), aFill);
   }
   
   void convert(uint16_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
-    append(aAppender, static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aBase), aFill);
+    append(static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aBase), aFill);
   }
   
   void convert(uint32_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
-    append(aAppender, static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aBase), aFill);
+    append(static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aBase), aFill);
   }
   
   void convert(uint64_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
-    append(aAppender, aValue, static_cast<uint64_t>(aBase), aFill);
+    append(aValue, static_cast<uint64_t>(aBase), aFill);
   }
 
   void convert(int8_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
-    append(aAppender, static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aBase), aFill);
+    append(static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aBase), aFill);
   }
   
   void convert(int16_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
-    append(aAppender, static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aBase), aFill);
+    append(static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aBase), aFill);
   }
   
   void convert(int32_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
-    append(aAppender, static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aBase), aFill);
+    append(static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aBase), aFill);
   }
   
   void convert(int64_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
-    append(aAppender, aValue, static_cast<int64_t>(aBase), aFill);
+    append(aValue, static_cast<int64_t>(aBase), aFill);
   }
 
   void convert(char const aValue, uint8_t const, uint8_t const) noexcept {
@@ -94,12 +106,7 @@ public:
   }
 
   void convert(char const * const aValue, uint8_t const, uint8_t const) noexcept {
-    char const * where = aValue;
-    while(*where && mBegin < mEnd) { // Don't use append to be able to escape when buffer is full.
-      *mBegin = *where;
-      mBegin++;
-      where++;
-    }
+    append(aValue);
     appendSpace();
   }
 
@@ -112,12 +119,21 @@ private:
     append(csSpace);
   }
 
-  void append(char const aValue) {
+  void append(char const aValue) noexcept {
     if(mBegin < mEnd) {
-      *mBegin = csSpace;
+      *mBegin = aValue;
       ++mBegin;
     }
     else { // nothing to do
+    }
+  }
+
+  void append(char const * const aValue) noexcept {
+    char const * where = aValue;
+    while(*where && mBegin < mEnd) { // Don't use append to be able to escape when buffer is full.
+      *mBegin = *where;
+      mBegin++;
+      where++;
     }
   }
 
@@ -126,7 +142,7 @@ private:
   };
 
   template<typename tValue>
-  static void append(tValue const aValue, tValue const aBase, uint8_t const aFill) noexcept {
+  void append(tValue const aValue, tValue const aBase, uint8_t const aFill) noexcept {
     tValue tmpValue = aValue;
     uint8_t tmpFill = aFill;
     if((aBase > NumericSystem::csInvalid) && (aBase <= NumericSystem::csBaseMax)) {
@@ -135,23 +151,23 @@ private:
     }
     else { // nothing to do
     }
-    if(sConfig->appendBasePrefix) {
+    if(tAppendBasePrefix) {
       if (aBase == 2u) {
         append(csNumericFill);
         append(csNumericMarkBinary);
       }
-      else if(aBase == NumericSystem::16u) {
+      else if(aBase == 16u) {
         append(csNumericFill);
         append(csNumericMarkHexadecimal);
       }
-      else if(aBase != NumericSystem::10u) {
+      else if(aBase != 10u) {
         append(csNumericFill);
         append(csNumericMarkOther);
       }
       else { // nothing to do
       }
     }
-    char tmpBuffer[tAppendStackBufferLength];
+    char tmpBuffer[tAppendStackBufferSize];
     uint8_t where = 0u;
     bool negative = aValue < 0;
     do {
@@ -161,11 +177,11 @@ private:
       }
       else { // nothing to do
       }
-      tmpBuffer[where] = cDigit2char[mod];
+      tmpBuffer[where] = csDigit2char[mod];
       ++where;
       tmpValue /= aBase;
-    } while((tmpValue != 0) && (where < tAppendStackBufferLength));
-    if(where >= tAppendStackBufferLength) {
+    } while((tmpValue != 0) && (where < tAppendStackBufferSize));
+    if(where >= tAppendStackBufferSize) {
       append(csNumericError);
       return;
     }
@@ -174,7 +190,7 @@ private:
     if(negative) {
       append(csMinus);
     }
-    else if(sConfig->alignSigned && (aFill > 0u)) {
+    else if(tAlignSigned && (aFill > 0u)) {
       append(csSpace);
     }
     else { // nothing to do
@@ -192,12 +208,12 @@ private:
     append(tmpBuffer[0]);
   }
 
-  static void append(Appender& aAppender, long double const aValue, uint8_t const aDigitsNeeded) noexcept {
+  void append(long double const aValue, uint8_t const aDigitsNeeded) noexcept {
     if(std::isnan(aValue)) {
-      append(aAppender, cNan);
+      append(csNan);
       return;
     } else if(std::isinf(aValue)) {
-      append(aAppender, cInf);
+      append(csInf);
       return;
     } else if(aValue == 0.0l) {
       append(csNumericFill);
@@ -209,7 +225,7 @@ private:
           value = -value;
           append(csMinus);
       }
-      else if(sConfig->alignSigned) {
+      else if(tAlignSigned) {
         append(csSpace);
       }
       else { // nothing to do
@@ -224,7 +240,7 @@ private:
         }
         else { // nothing to do
         }
-        append(cDigit2char[firstDigit]);
+        append(csDigit2char[firstDigit]);
         normalized = 10.0 * (normalized - firstDigit);
         if(i == 1u) {
           append(csFractionDot);
@@ -238,14 +254,14 @@ private:
       }
       else { // nothing to do
       }
-      append(cDigit2char[firstDigit]);
+      append(csDigit2char[firstDigit]);
       append(csScientificE);
       if(exponent >= 0) {
         append(csPlus);
       }
       else { // nothing to do
       }
-      append(aAppender, static_cast<int32_t>(exponent), static_cast<int32_t>(10), 0u);
+      append(static_cast<int32_t>(exponent), static_cast<int32_t>(10), 0u);
     }
   }
 };

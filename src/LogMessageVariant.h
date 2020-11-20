@@ -4,20 +4,24 @@
 
 #include "LogMessageBase.h"
 #include <variant>
+#include <cstddef>
 #include <type_traits>
+
 
 namespace nowtech::log {
 
 // Will be copied using operator=
-template<bool tSupport64>
-class MessageVariant final : public MessageBase<tSupport64> {
-  using Payload32 std::variant<float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char, char*>;
-  using Payload64 std::variant<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char*>;
-  using Payload = std::conditional_t<tSupport64, Payload64, Payload32>;
-  static_assert(std::is_trivially_copyable_t<Paylopad>);
+template<size_t tPayloadSize>
+class MessageVariant final : public MessageBase<tPayloadSize> {
+  using Payload32 = std::variant<float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char, char*>;
+  using Payload64 = std::variant<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char*>;
+  using Payload80 = std::variant<float, double, long double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char*>;
+  using Payload = std::conditional_t<tPayloadSize < sizeof(int64_t) && sizeof(char*) == sizeof(int32_t), Payload32,
+                  std::conditional_t<tPayloadSize < sizeof(long double), Payload64, Payload80>>;
+  static_assert(std::is_trivially_copyable_v<Payload>);
 
   Payload         mPayload;
-  LogFormat    mFormat;
+  LogFormat       mFormat;
   TaskId          mTaskId;
   MessageSequence mMessageSequence;
 
@@ -38,20 +42,20 @@ public:
 
   template<typename tConverter>
   void output(tConverter& aConverter) const noexcept {
-    auto visitor = [mFormat](const auto aObj) { aConverter.convert(aObj, mFormat.getBase(), mFormat.getFill()); };
+    auto visitor = [this, &aConverter](const auto aObj) { aConverter.convert(aObj, mFormat.mBase, mFormat.mFill); };
     std::visit(visitor, mPayload);
   }
 
   bool isTerminal() const noexcept {
-    return mMessageSequence == csTerminal;
+    return mMessageSequence == MessageBase<tPayloadSize>::csTerminal;
   }
 
   uint8_t getBase() const noexcept {
-    return mFormat.getBase();
+    return mFormat.mBase;
   }  
 
   uint8_t getFill() const noexcept {
-    return mFormat.getFill();
+    return mFormat.mFill;
   }  
 
   TaskId getTaskId() const noexcept {

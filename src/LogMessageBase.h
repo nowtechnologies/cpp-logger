@@ -10,21 +10,7 @@ public:
   uint8_t mBase;
   uint8_t mFill;
 
-  LogFormat() = default;
-  LogFormat(LogFormat const &) = default;
-  LogFormat(LogFormat &&) = default;
-  LogFormat& operator=(LogFormat const &) = default;
-  LogFormat& operator=(LogFormat &&) = default;
-
-  uint8_t getBase() const noexcept {
-    return mBase;
-  }
-
-  uint8_t getFill() const noexcept {
-    return mFill;
-  }
-
-  void invlidate() noexcept {
+  void invalidate() noexcept {
     mBase = NumericSystem::csInvalid;
   }
 
@@ -36,17 +22,16 @@ public:
 using TaskId          = uint8_t;
 using MessageSequence = uint8_t;
 
-template<typename tSupport64>
+template<std::size_t tPayloadSize>
 class MessageBase {
 public:
   static constexpr MessageSequence csTerminal = 0u;
 
 protected:
-  using LargestPayload = std::conditional_t<tSupport64, int64_t, int32_t>;
-
-  static_assert(sizeof(float) <= sizeof(LargestPayload));
-  static_assert(tSupport64 && sizeof(double) <= sizeof(LargestPayload));
-  static_assert(sizeof(char*) <= sizeof(LargestPayload));
+  static_assert(sizeof(float) <= tPayloadSize);
+  static_assert(sizeof(int32_t) <= tPayloadSize);
+  static_assert(sizeof(double) <= sizeof(int64_t));
+  static_assert(sizeof(char*) <= tPayloadSize);
   static_assert(sizeof(LogFormat) == sizeof(int16_t));
 };
 

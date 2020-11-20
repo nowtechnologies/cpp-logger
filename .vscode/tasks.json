@@ -3,27 +3,28 @@
   "tasks": [
     {
       "type": "shell",
-      "label": "g++ build test-stdthreadostream",
-      "command": "/usr/bin/g++",
-      "args": ["-ggdb", "test/test-stdthreadostream.cpp", "-Wall", "-Wpedantic", "-Wextra", "-std=c++17", "-I", "src/", "-D_GLIBCXX_DEBUG", "-lpthread",  "-o", "${workspaceFolder}/test-stdthreadostream"],
+      "label": "clang++ build test-stdthreadostream",
+      "command": "/usr/bin/clang++",
+      "args": [
+        "-ggdb",
+        "test/test-stdostream.cpp",
+        "-Wall",
+        "-Wpedantic",
+        "-Wextra",
+        "-std=c++20",
+        "-I",
+        "src/",
+        "-D_GLIBCXX_DEBUG",
+        "-lpthread",
+        "-o",
+        "${workspaceFolder}/test-stdthreadostream"
+      ],
       "options": {
         "cwd": "${workspaceFolder}"
       },
-      "problemMatcher": ["$gcc"],
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      }
-    },
-    {
-      "type": "shell",
-      "label": "g++ build test-stdostream",
-      "command": "/usr/bin/g++",
-      "args": ["-ggdb", "test/test-stdostream.cpp", "-Wall", "-Wpedantic", "-Wextra", "-std=c++17", "-I", "src/", "-D_GLIBCXX_DEBUG", "-lpthread",  "-o", "${workspaceFolder}/test-stdostream"],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": ["$gcc"],
+      "problemMatcher": [
+        "$gcc"
+      ],
       "group": {
         "kind": "build",
         "isDefault": true

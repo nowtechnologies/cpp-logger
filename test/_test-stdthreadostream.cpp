@@ -44,8 +44,8 @@ char names[10][10] = {
 };
 
 namespace LogTopics {
-nowtech::log::LogTopicInstance system;
-nowtech::log::LogTopicInstance test;
+nowtech::log::TopicInstance system;
+nowtech::log::TopicInstance test;
 }
 
 /*void* operator new(std::size_t aCount) {

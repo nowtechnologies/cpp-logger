@@ -8,19 +8,19 @@
 namespace nowtech::log {
 
 // Will be copied via taking the data pointer. Here we go for size.
-template<bool tSupport64>
-class MessageCompact final : public MessageBase<tSupport64> {
+template<size_t tPayloadSize>
+class MessageCompact final : public MessageBase<tPayloadSize> {
 private:
   enum class Type : uint8_t {
-    cInvalid, cFloat, cDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray;
+    cInvalid, cFloat, cDouble, cLongDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray;
   };
 
 public:
-  static constexpr size_t csTotalSize = sizeof(LargestPayload) + 2 * sizeof(uint8_t) + sizeof(TaskId) + sizeof(MessageSequence) + sizeof(Type);
+  static constexpr size_t csTotalSize = tPayloadSize + 2 * sizeof(uint8_t) + sizeof(TaskId) + sizeof(MessageSequence) + sizeof(Type);
 
 private:
   static constexpr size_t csOffsetPayload         = 0u;
-  static constexpr size_t csOffsetBase         = csOffsetPayload + sizeof(LargestPayload);
+  static constexpr size_t csOffsetBase            = csOffsetPayload + tPayloadSize;
   static constexpr size_t csOffsetFill            = csOffsetBase + sizeof(uint8_t);
   static constexpr size_t csOffsetTaskId          = csOffsetFill + sizeof(uint8_t);
   static constexpr size_t csOffsetMessageSequence = csOffsetTaskId + sizeof(TaskId);
@@ -38,6 +38,7 @@ public:
   template<typename tArgument> Type getType() const noexcept { return Type::cInvalid; }
   template<> Type getType<float>() const noexcept { return Type::cFloat; }
   template<> Type getType<double>() const noexcept { return Type::cDouble; }
+  template<> Type getType<long double>() const noexcept { return Type::cLongDouble; }
   template<> Type getType<uint8_t>() const noexcept { return Type::cUint8_t; }
   template<> Type getType<uint16_t>() const noexcept { return Type::cUint16_t; }
   template<> Type getType<uint32_t>() const noexcept { return Type::cUint32_t; }
@@ -110,12 +111,17 @@ public:
       std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
       aConverter.convert(value, base, fill);
     }
-    else { // nothing to do
-    }
-    if constexpr(tSupport64) {
-      output64<tConverter>(aConverter, base, fill);
-    }
-    else { // nothing to do
+    else {
+      if constexpr(tPayloadSize >= sizeof(int64_t) || sizeof(char*) > sizeof(int32_t)) {
+        output64<tConverter>(aConverter, base, fill);
+      }
+      else { // nothing to do
+      }
+      if constexpr(tPayloadSize > sizeof(long double)) {
+        output80<tConverter>(aConverter, base, fill);
+      }
+      else { // nothing to do
+      }
     }
   }
 
@@ -141,14 +147,14 @@ public:
 
 private:
   void setRest (LogFormat const aFormat, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
-    mData[csOffsetBase] = aFormat.getBase();
-    mData[csOffsetFill] = aFormat.getFill();
+    mData[csOffsetBase] = aFormat.mBase;
+    mData[csOffsetFill] = aFormat.mFill;
     mData[csOffsetTaskId] = aTaskId;
     mData[csOffsetMessageSequence] = aMessageSequence;
   }
 
-  template <typename tConverter, typename tDummy = void>
-  auto output64(tConverter& aConverter, uint8_t const aBase, uint8_t const aFill) -> std::enable_if_t<tSupport64, tDummy> const noexcept {
+  template<typename tConverter>
+  void output64(tConverter& aConverter, uint8_t const aBase, uint8_t const aFill) const noexcept {
     Type type = static_cast<Type>(mData[csOffsetType]);
     if(type == Type::cDouble) {
       double value;
@@ -162,6 +168,18 @@ private:
     }
     else if(type == Type::cInt64_t) {
       int64_t value;
+      std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
+      aConverter.convert(value, aBase, aFill);
+    }
+    else { // nothing to do
+    }
+  }
+
+  template<typename tConverter>
+  void output80(tConverter& aConverter, uint8_t const aBase, uint8_t const aFill) const noexcept {
+    Type type = static_cast<Type>(mData[csOffsetType]);
+    if(type == Type::cLongDouble) {
+      long double value;
       std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
       aConverter.convert(value, aBase, aFill);
     }

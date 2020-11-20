@@ -11,7 +11,9 @@ namespace nowtech::log {
   
 enum class Exception : uint8_t {
   cOutOfTaskIdsOrDoubleRegistration = 0u,
-  cOutOfTopics                      = 1u
+  cOutOfTopics                      = 1u,
+  cSenderError                      = 2u,
+  cCount                            = 3u
 };
 
 enum class TaskRepresentation : uint8_t {
@@ -20,20 +22,20 @@ enum class TaskRepresentation : uint8_t {
   cName = 2u
 };
 
-typedef int8_t LogTopic; // this needs to be signed to let the overload resolution work
+using LogTopic = int8_t; // this needs to be signed to let the overload resolution work
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation>
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize>
 class Log;
 
-class LogTopicInstance final {
-  template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation>
+class TopicInstance final {
+  template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize>
   friend class Log;
 
 public:
-  static constexpr LogTopic cInvalidTopic = std::numeric_limits<LogTopic>::min();
+  static constexpr LogTopic csInvalidTopic = std::numeric_limits<LogTopic>::min();
 
 private:
-  LogTopic mValue = cInvalidTopic;
+  LogTopic mValue = csInvalidTopic;
 
   LogTopic operator=(LogTopic const aValue) {
     mValue = aValue;
@@ -100,27 +102,23 @@ enum class LogShiftChainEndMarker : uint8_t {
   cEnd      = 0u
 };
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferLength>
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize>
 class Log final {
 private:
-  static constexpr bool csSendInBackground = (tDirectBufferLength == 0u); // will omit tQueue
-  using tMessage = tQueue::tMessage;
-  static constexpr bool csSupport64 = tMessage::tSupport64;
-  using tAppInterface = tSender::tAppInterface;
-  using tConverter = tSender::tConverter;
-  using ConversionResult = tConverter::ConversionResult;
-  using TopicPrefix = char const *;
+  static constexpr bool csShutDownLog      = false; // TODO make a void tSender and enable this when used with it.
+  static constexpr bool csSendInBackground = (tDirectBufferSize == 0u); // will omit tQueue
+  using tMessage = typename tQueue::tMessage_;
+  using tAppInterface = typename tSender::tAppInterface_;
+  using tConverter = typename tSender::tConverter_;
+  using ConversionResult = typename tConverter::ConversionResult;
+  using TopicName = char const *;
   
-  static constexpr TaskId  csInvalidTaskId  = tSend::csInvalidTaskId;
-  static constexpr TaskId  csMaxTaskIdCount = tSend::csMaxTaskCount + 1u;
-
-  static constexpr LogTopic csFreeTopicIncrement = 1;
+  static constexpr TaskId  csInvalidTaskId  = tAppInterface::csInvalidTaskId;
+  
   static constexpr LogTopic csFirstFreeTopic = 0;
 
-  static_assert(tMaxTopicCount <= std::numeric_limits<LogTopic>::max());
-  static_assert(cInvalidTaskId == std::numeric_limits<TaskId>::max());
-  static_assert(tSend::csMaxTaskCount < std::numeric_limits<TaskId>::max() - 1u);
-  static_assert(tSend::csMaxTaskCount == csLocalTaskId);
+  static_assert(csInvalidTaskId == std::numeric_limits<TaskId>::max());
+  static_assert(tAppInterface::csMaxTaskCount < std::numeric_limits<TaskId>::max() - 1u);
 
   inline static constexpr char csRegisteredTask[]    = "-=- Registered task: ";
   inline static constexpr char csUnregisteredTask[]  = "-=- Unregistered task: ";
@@ -134,7 +132,8 @@ private:
   TODO similar is for getTaskName() - if in ISR, returns "ISR" */
 
   inline static LogConfig const * sConfig;
-  inline static std::atomic<LogTopic> sNextFreeTopic = csFirstFreeTopic;
+  inline static std::atomic<LogTopic> sNextFreeTopic;
+  inline static TopicName *sRegisteredTopics;
 
   Log() = delete;
 
@@ -146,9 +145,11 @@ private:
     tMessage        mFirstMessage;
 
   public:
+    static constexpr LogShiftChainEndMarker end = LogShiftChainEndMarker::cEnd;
+
     LogShiftChainHelperBackgroundSend() noexcept = delete;
 
-    LogShiftChainHelperBackgroundSend(TaskId& aTaskId) noexcept
+    LogShiftChainHelperBackgroundSend(TaskId const aTaskId) noexcept
      : mTaskId(aTaskId)
      , mNextSequence(0u) {
        mNextFormat.invalidate();
@@ -207,7 +208,7 @@ private:
   public:
     LogShiftChainHelperDirectSend() noexcept = delete;
 
-    LogShiftChainHelperDirectSend(TaskId& aTaskId) noexcept
+    LogShiftChainHelperDirectSend(TaskId const aTaskId) noexcept
      : mTaskId(aTaskId) {
        mNextFormat.invalidate();
     }
@@ -218,7 +219,7 @@ private:
     }
 
     template<typename tValue>
-    LogShiftChainHelperDirectSend& operator<<(tValue const aValue) noexcept {
+    LogShiftChainHelperDirectSend& operator<<(tValue const aValue) {
       if(mTaskId != csInvalidTaskId) {
         LogFormat format;
         if(mNextFormat.isValid()) {
@@ -227,9 +228,9 @@ private:
         else {
           format = sConfig->defaultFormat;
         }
-        ConversionResult buffer[tDirectBufferLength];
-        tConverter converter(buffer, buffer + tDirectBufferLength);
-        converter.convert(aValue);
+        ConversionResult buffer[tDirectBufferSize];
+        tConverter converter(buffer, buffer + tDirectBufferSize);
+        converter.convert(aValue, format.mBase, format.mFill);
         tAppInterface::lock();
         tSender::send(buffer, converter.end());
         tAppInterface::unlock();
@@ -246,8 +247,8 @@ private:
 
     void operator<<(LogShiftChainEndMarker const) noexcept {
       if(mTaskId != csInvalidTaskId) {
-        ConversionResult buffer[tDirectBufferLength];
-        tConverter converter(buffer, buffer + tDirectBufferLength);
+        ConversionResult buffer[tDirectBufferSize];
+        tConverter converter(buffer, buffer + tDirectBufferSize);
         converter.terminateSequence();
         tAppInterface::lock();
         tSender::send(buffer, converter.end());
@@ -258,7 +259,33 @@ private:
     }
   }; // class LogShiftChainHelperDirectSend
 
-  using LogShiftChainHelper = std::conditional_t<csSendInBackground, LogShiftChainHelperBackgroundSend, LogShiftChainHelperDirectSend>;
+  /// This shuts down all logging code generation without uncommenting anything from user code, when compiled with aT least -O1 
+  class LogShiftChainHelperEmpty final {
+  public:
+    LogShiftChainHelperEmpty() noexcept = delete;
+
+    LogShiftChainHelperEmpty(TaskId const) noexcept {
+    }
+
+    /// Can be used in application code to eliminate further operator<< calls when the topic is disabled.
+    bool isValid() const noexcept {
+      return false;
+    }
+
+    template<typename tValue>
+    LogShiftChainHelperDirectSend& operator<<(tValue const) noexcept {
+      return *this;
+    }
+
+    LogShiftChainHelperDirectSend& operator<<(LogFormat const) noexcept {
+      return *this;
+    }
+
+    void operator<<(LogShiftChainEndMarker const) noexcept {
+    }
+  }; // class LogShiftChainHelperEmpty
+
+  using LogShiftChainHelper = std::conditional_t<csShutDownLog, LogShiftChainHelperEmpty, std::conditional_t<csSendInBackground, LogShiftChainHelperBackgroundSend, LogShiftChainHelperDirectSend>>;
 
 public:
   /// Will be used as Log << something << to << log << Log::end;
@@ -267,15 +294,15 @@ public:
   // TODO remark in docs: must come before registering topics
   static void init(LogConfig const &aConfig) {
     sConfig = &aConfig;
-    if constexpr(cSendInBackground) {
+    if constexpr(csSendInBackground) {
       tAppInterface::init([](){ transmitterTaskFunction(); });
     }
     else {
       tAppInterface::init();
     }
-    tSender::init();
     tQueue::init();
-    sRegisteredTopics = tAppInterface::template _newArray<TopicPrefix>(tMaxTopicCount);
+    sNextFreeTopic = csFirstFreeTopic;
+    sRegisteredTopics = tAppInterface::template _newArray<TopicName>(tMaxTopicCount);
     std::fill_n(sRegisteredTopics, tMaxTopicCount, nullptr);
   }
 
@@ -284,7 +311,7 @@ public:
     tQueue::done();
     tSender::done();
     tAppInterface::done();
-    tAppInterface::template _deleteArray<TopicPrefix>(sRegisteredTopics);
+    tAppInterface::template _deleteArray<TopicName>(sRegisteredTopics);
   }
 
   /// Registers the current task if not already present. It can register
@@ -313,15 +340,15 @@ public:
 
   static void unregisterCurrentTask() noexcept {
     TaskId taskId = tAppInterface::unregisterCurrentTask();
-    if(taskId != cInvalidTaskId && sConfig->allowRegistrationLog) {
+    if(taskId != csInvalidTaskId && sConfig->allowRegistrationLog) {
       n() << csRegisteredTask << tAppInterface::getTaskName(taskId) << taskId << end;
     }
     else { // nothing to do
     }
   }
 
-  static void registerTopic(LogTopicInstance &aTopic, char const * const aPrefix) {
-    aTopic = sNextFreeTopic.fetch_add(cFreeTopicIncrement);
+  static void registerTopic(TopicInstance &aTopic, char const * const aPrefix) {
+    aTopic = sNextFreeTopic++;
     if(aTopic >= tMaxTopicCount) {
       tAppInterface::fatalError(Exception::cOutOfTopics);
     }
@@ -330,12 +357,12 @@ public:
     }
   }
   
-  static [[nodiscard]] TaskId getCurrentTaskId() noexcept {   // nodiscard because possibly expensive call
-    return tAppInterface::getCurrentTaskId(cLocalTaskId);
+  static TaskId getCurrentTaskId() noexcept {
+    return tAppInterface::getCurrentTaskId();
   }
 
   static auto i() noexcept {
-    TaskIdType const taskId = tAppInterface::getCurrentTaskId();
+    TaskId const taskId = tAppInterface::getCurrentTaskId();
     return sendHeader(taskId);
   }
 
@@ -345,7 +372,7 @@ public:
 
   static LogShiftChainHelper i(LogTopic const aTopic) noexcept {
     if(sRegisteredTopics[aTopic] != nullptr) {
-      TaskIdType const taskId = tAppInterface::getCurrentTaskId();
+      TaskId const taskId = tAppInterface::getCurrentTaskId();
       return sendHeader(taskId, sRegisteredTopics[aTopic]);
     }
     else {
@@ -379,7 +406,7 @@ public:
     }
   }
 
-  static LogShiftChainHelper n(LogTopic const aTopic, TaskIdType const aTaskId) noexcept {
+  static LogShiftChainHelper n(LogTopic const aTopic, TaskId const aTaskId) noexcept {
     if(sRegisteredTopics[aTopic] != nullptr) {
       return LogShiftChainHelper{aTaskId};
     }
@@ -412,7 +439,7 @@ private:
   }
 
   static LogShiftChainHelper sendHeader(TaskId const aTaskId, char const * aTopicName) noexcept {
-    LogShiftChainHelper result{aTaskId} = sendHeader(aTaskId);
+    LogShiftChainHelper result = sendHeader(aTaskId);
     if(aTopicName != nullptr && aTopicName[0] != 0) {
       result << sConfig->taskIdFormat;
     }
@@ -421,8 +448,14 @@ private:
     return result;
   }
 
+  static void transmitterTaskFunction() noexcept {
+
+  }
+
 };
 
 }
+
+using LC = nowtech::log::LogConfig;
 
 #endif

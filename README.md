@@ -93,7 +93,7 @@ there is enough memory for all application functions, object
 construction and thread registration should be done as early as
 possible.
 
-Log topic values of type `nowtech::LogTopicInstance` (one for each registered topic) are intended to be stored in some global accessible construct for convenient use. Of course, local storage and passing values around is also possible. The registration mechanism allows libraries to define their own topic variable set and be compiled on its own into a static/dynamic library. Only the registration is required to be performed in the initialization part of the application. An appropriate header file would look like
+Log topic values of type `nowtech::TopicInstance` (one for each registered topic) are intended to be stored in some global accessible construct for convenient use. Of course, local storage and passing values around is also possible. The registration mechanism allows libraries to define their own topic variable set and be compiled on its own into a static/dynamic library. Only the registration is required to be performed in the initialization part of the application. An appropriate header file would look like
 
 ```cpp
 #ifndef SOMELOGTOPICS_H_INCLUDED
@@ -104,9 +104,9 @@ Log topic values of type `nowtech::LogTopicInstance` (one for each registered to
 namespace nowtech {
 namespace SomeLogTopicNamespace {
 
-extern LogTopicInstance system;
-extern LogTopicInstance watchdog;
-extern LogTopicInstance selfTest;
+extern TopicInstance system;
+extern TopicInstance watchdog;
+extern TopicInstance selfTest;
 
 }
 }
@@ -119,9 +119,9 @@ While the .cpp file
 ```cpp
 #include "LogTopics.h"
 
-nowtech::LogTopicInstance nowtech::SomeLogTopicNamespace::system;
-nowtech::LogTopicInstance nowtech::SomeLogTopicNamespace::watchdog;
-nowtech::LogTopicInstance nowtech::SomeLogTopicNamespace::selfTest;
+nowtech::TopicInstance nowtech::SomeLogTopicNamespace::system;
+nowtech::TopicInstance nowtech::SomeLogTopicNamespace::watchdog;
+nowtech::TopicInstance nowtech::SomeLogTopicNamespace::selfTest;
 ```
 
 ### The class operates roughly as follows
@@ -161,7 +161,7 @@ The following steps are required to initialize the log system:
 2. Create an object of the desired `Nowtech::LogOsInterface` subclass. This instance should not be destructed.
 3. Create the Log instance using the above two objects. This instance should not be destructed.
 4. Register the required topics using `Log::registerTopic` to let only a
-    subset of logs be printed. These variables of type `nowtech::LogTopicInstance` are defined in various parts of the whole application, even in libraries. For example, if
+    subset of logs be printed. These variables of type `nowtech::TopicInstance` are defined in various parts of the whole application, even in libraries. For example, if
     you have there `system`, `connection` and `watchdog` defined, and
     you only register `connection` and `watchdog`, all the calls
     starting with `Log::send(nowtech::SomeLogTopicNameSpace::system` will be
@@ -242,9 +242,9 @@ called from any place in the application:
 The ones with the name `send` behave according to the stored configuration and the actual parameter list.
 The ones with the name `sendNoHeader` skip printing a header, if any defined in the config.
 The ones receiving the `LogTopicType` parameter will emit the message
-preceded by the string used to register the given `LogTopicInstance` parameter
+preceded by the string used to register the given `TopicInstance` parameter
 if it was actually registered. If not, the whole message is discarded.
-Passing the `LogTopicInstance` variables is not possible, but this class has an overloaded * paramerer to return the contained `LogTopicType` value.
+Passing the `TopicInstance` variables is not possible, but this class has an overloaded * paramerer to return the contained `LogTopicType` value.
 The ones without the `LogTopicType` parameter will emit the message
 unconditionally.
 
@@ -263,7 +263,7 @@ The following entry points are available:
   - `static LogShiftChainHelper n() noexcept;` -- doesn't print header, logs unconditionally
   - `static LogShiftChainHelper n(LogTopicType const aTopic) noexcept;` -- logs without header if the topic is enabled
 
-The class `LogTopicInstance` has an overloaded cast operator to `LogTopicType` so it can be passed directly. Due to operator overloading, static access is not available, so the Log instance has to be required:
+The class `TopicInstance` has an overloaded cast operator to `LogTopicType` so it can be passed directly. Due to operator overloading, static access is not available, so the Log instance has to be required:
 
 ```cpp
 Log::i() << uint8 << ' ' << int8 << Log::end;

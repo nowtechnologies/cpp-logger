@@ -269,11 +269,11 @@ private:
     }
 
     template<typename tValue>
-    LogShiftChainHelperDirectSend& operator<<(tValue const) noexcept {
+    LogShiftChainHelperEmpty& operator<<(tValue const) noexcept {
       return *this;
     }
 
-    LogShiftChainHelperDirectSend& operator<<(LogFormat const) noexcept {
+    LogShiftChainHelperEmpty& operator<<(LogFormat const) noexcept {
       return *this;
     }
 
@@ -436,8 +436,8 @@ private:
 
   static LogShiftChainHelper sendHeader(TaskId const aTaskId, char const * aTopicName) noexcept {
     LogShiftChainHelper result = sendHeader(aTaskId);
-    if(!result.isValid() && aTopicName != nullptr && aTopicName[0] != 0) {
-      result << sConfig->taskIdFormat;
+    if(result.isValid() && aTopicName != nullptr) {
+      result << aTopicName;
     }
     else { // nothing to do
     }

@@ -35,7 +35,7 @@
 
 constexpr size_t cgThreadCount = 10;
 
-char names[10][10] = {
+char cgThreadNames[10][10] = {
   "thread_0",
   "thread_1",
   "thread_2",
@@ -75,8 +75,8 @@ using LogMessage = nowtech::log::MessageVariant<cgPayloadSize>;
 using LogQueueVoid = nowtech::log::QueueVoid<LogMessage, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueueVoid, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize>;
  
-void delayedLog(int32_t n) {
-  Log::registerCurrentTask("delayed");
+void delayedLog(size_t n) {
+  Log::registerCurrentTask(cgThreadNames[n]);
   Log::i(nowtech::LogTopics::system) << n << ": " << 0 << Log::end;
   for(int64_t i = 1; i < 13; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1 << i));
@@ -94,13 +94,13 @@ int main() {
   Log::init(logConfig);
 
   Log::registerTopic(nowtech::LogTopics::system, "system");
-  Log::registerTopic(nowtech::LogTopics::surplus, "susplus");
+  Log::registerTopic(nowtech::LogTopics::surplus, "surplus");
   Log::registerCurrentTask("main");
 
   uint64_t const uint64 = 123456789012345;
   int64_t const int64 = -123456789012345;
 
-  Log::i(nowtech::LogTopics::surplus) << "surplus" << Log::end;
+  Log::i(nowtech::LogTopics::surplus) << "message" << Log::end;
 
   Log::i(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::n(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;

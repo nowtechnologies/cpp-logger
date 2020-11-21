@@ -65,6 +65,7 @@ public:
   inline static constexpr LogFormat B16     { 2u, 16u};
   inline static constexpr LogFormat B24     { 2u, 24u};
   inline static constexpr LogFormat B32     { 2u, 32u};
+  inline static constexpr LogFormat Fm      {10u,  0u};
   inline static constexpr LogFormat D1      {10u,  1u};
   inline static constexpr LogFormat D2      {10u,  2u};
   inline static constexpr LogFormat D3      {10u,  3u};
@@ -92,7 +93,7 @@ public:
   /// Format for displaying the FreeRTOS ticks in the header, if any. Should be
   /// LogFormat::cInvalid to disable tick output.
   LogFormat tickFormat      = D5;
-  LogFormat defaultFormat   = D5;
+  LogFormat defaultFormat   = Fm;
 
   LogConfig() noexcept = default;
 };
@@ -105,7 +106,7 @@ enum class LogShiftChainEndMarker : uint8_t {
 template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize>
 class Log final {
 private:
-  static constexpr bool csShutDownLog      = false; // TODO make a void tSender and enable this when used with it.
+  static constexpr bool csShutDownLog      = tSender::csVoid;
   static constexpr bool csSendInBackground = (tDirectBufferSize == 0u); // will omit tQueue
   using tMessage = typename tQueue::tMessage_;
   using tAppInterface = typename tSender::tAppInterface_;
@@ -113,24 +114,18 @@ private:
   using ConversionResult = typename tConverter::ConversionResult;
   using TopicName = char const *;
   
-  static constexpr TaskId  csInvalidTaskId  = tAppInterface::csInvalidTaskId;
+  static constexpr TaskId  csInvalidTaskId   = tAppInterface::csInvalidTaskId;
+  static constexpr TaskId  csIsrTaskId       = tAppInterface::csIsrTaskId;
   
   static constexpr LogTopic csFirstFreeTopic = 0;
 
   static_assert(csInvalidTaskId == std::numeric_limits<TaskId>::max());
-  static_assert(tAppInterface::csMaxTaskCount < std::numeric_limits<TaskId>::max() - 1u);
+  static_assert(csIsrTaskId == std::numeric_limits<TaskId>::min());
+  static_assert(tAppInterface::csMaxTaskCount < std::numeric_limits<TaskId>::max());
 
-  inline static constexpr char csRegisteredTask[]    = "-=- Registered task: ";
-  inline static constexpr char csUnregisteredTask[]  = "-=- Unregistered task: ";
-  /*
-  TODO these go in tAppInterface.
-  inline static constexpr char csUnknownTaskName[]   = "UNKNOWN";
-  inline static constexpr char csAnonymousTaskName[] = "ANONYMOUS";
-  inline static constexpr char csIsrTaskName[]       = "ISR";
-
-  TODO tAppInterface::getCurrentTaskId() returns 0 if ISR and it is enabled. If disabled, csInvalidTaskId.
-  TODO similar is for getTaskName() - if in ISR, returns "ISR" */
-
+  inline static constexpr char csRegisteredTask[]    = "-=- Registered task:";
+  inline static constexpr char csUnregisteredTask[]  = "-=- Unregistered task:";
+  
   inline static LogConfig const * sConfig;
   inline static std::atomic<LogTopic> sNextFreeTopic;
   inline static TopicName *sRegisteredTopics;
@@ -166,6 +161,7 @@ private:
         LogFormat format;
         if(mNextFormat.isValid()) {
           format = mNextFormat;
+          mNextFormat.invalidate();
         }
         else {
           format = sConfig->defaultFormat;
@@ -178,7 +174,6 @@ private:
         else {
           tQueue::push(message);
         }
-        mNextFormat.invalidate();
         ++mNextSequence;
       }
       else { // silently discard value, nothing to do
@@ -224,6 +219,7 @@ private:
         LogFormat format;
         if(mNextFormat.isValid()) {
           format = mNextFormat;
+          mNextFormat.invalidate();
         }
         else {
           format = sConfig->defaultFormat;
@@ -328,7 +324,7 @@ public:
     TaskId taskId = tAppInterface::registerCurrentTask(aTaskName);
     if(taskId != csInvalidTaskId) {
       if(sConfig->allowRegistrationLog) {
-        n() << csRegisteredTask << aTaskName << taskId << end;
+        n(taskId) << csRegisteredTask << aTaskName << taskId << end;
       }
       else { // nothing to do
       }
@@ -341,7 +337,7 @@ public:
   static void unregisterCurrentTask() noexcept {
     TaskId taskId = tAppInterface::unregisterCurrentTask();
     if(taskId != csInvalidTaskId && sConfig->allowRegistrationLog) {
-      n() << csRegisteredTask << tAppInterface::getTaskName(taskId) << taskId << end;
+      n(taskId) << csUnregisteredTask << taskId << end;
     }
     else { // nothing to do
     }
@@ -440,7 +436,7 @@ private:
 
   static LogShiftChainHelper sendHeader(TaskId const aTaskId, char const * aTopicName) noexcept {
     LogShiftChainHelper result = sendHeader(aTaskId);
-    if(aTopicName != nullptr && aTopicName[0] != 0) {
+    if(!result.isValid() && aTopicName != nullptr && aTopicName[0] != 0) {
       result << sConfig->taskIdFormat;
     }
     else { // nothing to do

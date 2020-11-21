@@ -33,7 +33,7 @@
 
 // clang++ -std=c++20 -Isrc -Itest test/test-stdostream.cpp -lpthread -o test-stdostream
 
-constexpr int32_t threadCount = 10;
+constexpr size_t cgThreadCount = 10;
 
 char names[10][10] = {
   "thread_0",
@@ -50,21 +50,23 @@ char names[10][10] = {
 
 namespace nowtech::LogTopics {
   nowtech::log::TopicInstance system;
+  nowtech::log::TopicInstance surplus;
 }
 
+constexpr nowtech::log::TaskId cgMaxTaskCount = cgThreadCount + 1;
 constexpr bool cgLogFromIsr = false;
 constexpr bool cgArchitecture64 = true;
 constexpr uint8_t cgAppendStackBufferSize = 100u;
 constexpr bool cgAppendBasePrefix = true;
-constexpr bool cgAlignSigned = true;
+constexpr bool cgAlignSigned = false;
 constexpr size_t cgTransmitBufferSize = 123u;
 constexpr size_t cgPayloadSize = 8u;
 constexpr size_t cgQueueSize = 8u;
-constexpr nowtech::log::LogTopic cgMaxTopicCount = 1;
+constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
 constexpr size_t cgDirectBufferSize = 43u;
 
-using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTopicCount, cgLogFromIsr>;
+using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr>;
 constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterfaceStd::LogTime cgRefreshPeriod = 444;
 using LogConverterCustomText = nowtech::log::ConverterCustomText<cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
@@ -74,15 +76,17 @@ using LogQueueVoid = nowtech::log::QueueVoid<LogMessage, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueueVoid, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize>;
  
 void delayedLog(int32_t n) {
+  Log::registerCurrentTask("delayed");
   Log::i(nowtech::LogTopics::system) << n << ": " << 0 << Log::end;
   for(int64_t i = 1; i < 13; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1 << i));
     Log::i(nowtech::LogTopics::system) << n << ". thread delay logarithm: " << LC::X1 << i << Log::end;
   }
+  Log::unregisterCurrentTask();
 }
 
 int main() {
-  std::thread threads[threadCount];
+  std::thread threads[cgThreadCount];
   
   nowtech::log::LogConfig logConfig;
   logConfig.allowRegistrationLog = true;
@@ -90,9 +94,13 @@ int main() {
   Log::init(logConfig);
 
   Log::registerTopic(nowtech::LogTopics::system, "system");
+  Log::registerTopic(nowtech::LogTopics::surplus, "susplus");
+  Log::registerCurrentTask("main");
 
   uint64_t const uint64 = 123456789012345;
   int64_t const int64 = -123456789012345;
+
+  Log::i(nowtech::LogTopics::surplus) << "surplus" << Log::end;
 
   Log::i(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::n(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
@@ -123,19 +131,23 @@ int main() {
   Log::i() << "uint64: " << static_cast<uint64_t>(123) << Log::end;
   Log::i() << "float: " << 1.234567890f << Log::end;
   Log::i() << "double: " << -1.234567890 << Log::end;
-  Log::i() << "float: " << -123.4567890f << Log::end;
-  Log::i() << "double: " << 123.4567890 << Log::end;
-  Log::i() << "float: " << -0.01234567890f << Log::end;
-  Log::i() << "double: " << 0.01234567890 << Log::end;
+  Log::i() << "float: " << LC::Fm << -123.4567890f << Log::end;
+  Log::i() << "double: " << LC::Fm << 123.4567890 << Log::end;
+  Log::i() << "long double: " << -0.01234567890L << Log::end;
+  Log::i() << "long double: " << LC::D16 << 0.01234567890L << Log::end;
   Log::i() << "bool:" << true << Log::end;
   Log::i() << "bool:" << false << Log::end;
 
-  for(int32_t i = 0; i < threadCount; ++i) {
+  for(size_t i = 0; i < cgThreadCount; ++i) {
     threads[i] = std::thread(delayedLog, i);
   }
-  for(int32_t i = 0; i < threadCount; ++i) {
+  for(size_t i = 0; i < cgThreadCount; ++i) {
     threads[i].join();
   }
+  Log::unregisterCurrentTask();
+
+  Log::done();
+
   return 0;
 }
 

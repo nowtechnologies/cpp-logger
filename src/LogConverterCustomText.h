@@ -20,6 +20,10 @@ private:
   using IntegerConversionUnsigned = std::conditional_t<tArchitecture64, uint64_t, uint32_t>;
   using IntegerConversionSigned   = std::conditional_t<tArchitecture64, int64_t, int32_t>;
 
+  static constexpr uint8_t csMaxDigitCountFloat      =  8u;
+  static constexpr uint8_t csMaxDigitCountDouble     = 16u;
+  static constexpr uint8_t csMaxDigitCountLongDouble = 34u;
+
   static constexpr char csNumericError            = '#';
   static constexpr char csEndOfLine               = '\n';
   static constexpr char csNumericFill             = '0';
@@ -28,7 +32,6 @@ private:
   static constexpr char csNumericMarkOther        = '!';
   static constexpr char csMinus                   = '-';
   static constexpr char csSpace                   = ' ';
-  static constexpr char csSeparatorFailure        = '@';
   static constexpr char csFractionDot             = '.';
   static constexpr char csPlus                    = '+';
   static constexpr char csScientificE             = 'e';
@@ -57,47 +60,58 @@ public:
 
 // TODO these should emit as many digits as reasonable when fill is 0
   void convert(float const aValue, uint8_t const, uint8_t const aFill) noexcept {
-    append(static_cast<long double>(aValue), aFill);
+    append(static_cast<long double>(aValue), aFill == 0u ? csMaxDigitCountFloat : aFill);
+    appendSpace();
   }
 
   void convert(double const aValue, uint8_t const, uint8_t const aFill) noexcept {
-    append(static_cast<long double>(aValue), aFill);
+    append(static_cast<long double>(aValue), aFill == 0u ? csMaxDigitCountDouble : aFill);
+    appendSpace();
   }
 
   void convert(long double const aValue, uint8_t const, uint8_t const aFill) noexcept {
-    append(aValue, aFill);
+    append(aValue, aFill == 0u ? csMaxDigitCountLongDouble : aFill);
+    appendSpace();
   }
 
   void convert(uint8_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
     append(static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aBase), aFill);
+    appendSpace();
   }
   
   void convert(uint16_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
     append(static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aBase), aFill);
+    appendSpace();
   }
   
   void convert(uint32_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
     append(static_cast<IntegerConversionUnsigned>(aValue), static_cast<IntegerConversionUnsigned>(aBase), aFill);
+    appendSpace();
   }
   
   void convert(uint64_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
     append(aValue, static_cast<uint64_t>(aBase), aFill);
+    appendSpace();
   }
 
   void convert(int8_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
     append(static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aBase), aFill);
+    appendSpace();
   }
   
   void convert(int16_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
     append(static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aBase), aFill);
+    appendSpace();
   }
   
   void convert(int32_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
     append(static_cast<IntegerConversionSigned>(aValue), static_cast<IntegerConversionSigned>(aBase), aFill);
+    appendSpace();
   }
   
   void convert(int64_t const aValue, uint8_t const aBase, uint8_t const aFill) noexcept {
     append(aValue, static_cast<int64_t>(aBase), aFill);
+    appendSpace();
   }
 
   void convert(char const aValue, uint8_t const, uint8_t const) noexcept {
@@ -145,7 +159,7 @@ private:
   void append(tValue const aValue, tValue const aBase, uint8_t const aFill) noexcept {
     tValue tmpValue = aValue;
     uint8_t tmpFill = aFill;
-    if((aBase > NumericSystem::csInvalid) && (aBase <= NumericSystem::csBaseMax)) {
+    if((aBase <= NumericSystem::csInvalid) || (aBase > NumericSystem::csBaseMax)) {
       append(csNumericError);
       return;
     }

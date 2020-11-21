@@ -15,7 +15,7 @@ public:
   }
 
   bool isValid() const noexcept {
-    return mBase <= NumericSystem::csBaseMax;
+    return mBase > NumericSystem::csInvalid && mBase <= NumericSystem::csBaseMax;
   }
 };
 

@@ -16,6 +16,9 @@ private:
 public:
   static void init() { // nothing to do
   }
+
+  static void done() {  // nothing to do
+  }
 };
 
 }

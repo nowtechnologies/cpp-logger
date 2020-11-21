@@ -10,7 +10,9 @@ template<typename tAppInterface, typename tConverter, size_t tTransmitBufferSize
 class SenderStdOstream final {
 public:
   using tAppInterface_ = tAppInterface;
-  using tConverter_ = tConverter;
+  using tConverter_    = tConverter;
+
+  static constexpr bool csVoid = false;
 
 private:
   inline static std::ostream *sStream = nullptr;
@@ -18,8 +20,12 @@ private:
   SenderStdOstream() = delete;
 
 public:
-  static void init(std::ostream * const aStream) noexcept {
+  static void init(std::ostream * const aStream) {
     sStream = aStream;
+  }
+
+  static void done() noexcept {
+
   }
 
   static void send(char const * const aBegin, char const * const aEnd) {

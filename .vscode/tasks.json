@@ -3,7 +3,7 @@
   "tasks": [
     {
       "type": "shell",
-      "label": "clang++ build test-stdthreadostream",
+      "label": "clang++ build test-stdostream",
       "command": "/usr/bin/clang++",
       "args": [
         "-ggdb",
@@ -17,7 +17,7 @@
         "-D_GLIBCXX_DEBUG",
         "-lpthread",
         "-o",
-        "${workspaceFolder}/test-stdthreadostream"
+        "${workspaceFolder}/test-stdostream"
       ],
       "options": {
         "cwd": "${workspaceFolder}"

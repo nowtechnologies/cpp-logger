@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <atomic>
 #include <limits>
+#include <array>
 
 namespace nowtech::log {
   
@@ -128,7 +129,7 @@ private:
   
   inline static LogConfig const * sConfig;
   inline static std::atomic<LogTopic> sNextFreeTopic;
-  inline static TopicName *sRegisteredTopics;
+  inline static std::array<TopicName, tMaxTopicCount> sRegisteredTopics;
 
   Log() = delete;
 
@@ -298,8 +299,7 @@ public:
     }
     tQueue::init();
     sNextFreeTopic = csFirstFreeTopic;
-    sRegisteredTopics = tAppInterface::template _newArray<TopicName>(tMaxTopicCount);
-    std::fill_n(sRegisteredTopics, tMaxTopicCount, nullptr);
+    std::fill_n(sRegisteredTopics.begin(), tMaxTopicCount, nullptr);
   }
 
   // TODO note in docs about init and done sequence
@@ -307,7 +307,6 @@ public:
     tQueue::done();
     tSender::done();
     tAppInterface::done();
-    tAppInterface::template _deleteArray<TopicName>(sRegisteredTopics);
   }
 
   /// Registers the current task if not already present. It can register

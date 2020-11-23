@@ -129,6 +129,7 @@ private:
   
   inline static LogConfig const * sConfig;
   inline static std::atomic<LogTopic> sNextFreeTopic;
+  inline static std::atomic<bool> sKeepAliveTask;
   inline static std::array<TopicName, tMaxTopicCount> sRegisteredTopics;
 
   Log() = delete;
@@ -292,6 +293,7 @@ public:
   static void init(LogConfig const &aConfig) {
     sConfig = &aConfig;
     if constexpr(csSendInBackground) {
+      sKeepAliveTask = true;
       tAppInterface::init([](){ transmitterTaskFunction(); });
     }
     else {
@@ -304,6 +306,7 @@ public:
 
   // TODO note in docs about init and done sequence
   static void done() {
+    sKeepAliveTask = false;
     tQueue::done();
     tSender::done();
     tAppInterface::done();
@@ -444,7 +447,9 @@ private:
   }
 
   static void transmitterTaskFunction() noexcept {
-
+    while(sKeepAliveTask) {
+      
+    }
   }
 
 };

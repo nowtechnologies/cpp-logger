@@ -8,6 +8,7 @@
 #include <mutex>
 #include <chrono>
 #include <thread>
+#include <functional>
 
 namespace nowtech::log {
 
@@ -44,6 +45,7 @@ private:
   inline static std::map<TaskId, std::thread::id> sTaskId2threads;
   inline static std::set<TaskId> sFreeTaskIds;
   inline static std::mutex sRegistrationMutex;
+  inline static std::thread *sTransmitterThread;
   
   AppInterfaceStd() = delete;
 
@@ -54,7 +56,17 @@ public:
     }
   }
 
+  static void init(std::function<void(void)> aFunction) {
+    init();
+    sTransmitterThread = new std::thread(aFunction);
+  }
+
   static void done() {
+    if(sTransmitterThread != nullptr) {
+      sTransmitterThread->join();
+    }
+    else { // nothing to do
+    }
     sThreadId2taskNamesIds.clear();
     sTaskId2threads.clear();
     sFreeTaskIds.clear();

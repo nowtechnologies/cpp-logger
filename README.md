@@ -30,13 +30,13 @@ Currently there is no user documentation for the new (still work-in-progress) so
 The logger consists of five classes:
 1. Log - the main class providing API and base architecture. This accepts the other ones as template parameters.
 2. Queue - used to transfer the converting and sending operations from the current task to a background one. Can use
-  1. the faster variant based message, or
-  2. the slower but more space-efficient handcrafted message.
+  - the faster variant based message, or
+  - the slower but more space-efficient handcrafted message.
 2. Converter - converts the user types to strings or any other binary format to be sent or stored.
 3. Sender - the class responsible for transmitting or storing the converted data.
 4. App interface - used to interface the application, STL and OS. This provides
-  1. Possibly custom memory management needed by embedded applications.
-  2. Task management.
-  3. Time management for obtaining timestamps.
-  4. Error management.
+  - Possibly custom memory management needed by embedded applications.
+  - Task management.
+  - Time management for obtaining timestamps.
+  - Error management.
 

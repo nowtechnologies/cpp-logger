@@ -1,6 +1,6 @@
 # C++ template-based log library
 
-This is a complete rework of my [old logger](https://github.com/balazs-bamer/cpp-logger/tree/master/) after identifying the design flaws and performance problems.
+This is a complete rework of my [old logger](https://github.com/balazs-bamer/cpp-logger/tree/old/) after identifying the design flaws and performance problems.
 
 The code was written to possibly conform MISRA C++ and High-Integrity C++.
 

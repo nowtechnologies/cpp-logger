@@ -39,4 +39,3 @@ The logger consists of five classes:
   - Task management.
   - Time management for obtaining timestamps.
   - Error management.
-

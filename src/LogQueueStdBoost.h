@@ -8,10 +8,14 @@
 
 namespace nowtech::log {
 
-template<typename tMessage, size_t tQueueSize>
+template<typename tMessage, typename tAppInterface, size_t tQueueSize>
 class QueueStdBoost final {
 public:
   using tMessage_ = tMessage;
+  using tAppInterface_ = tAppInterface;
+  using LogTime = typename tAppInterface::LogTime;
+
+  static constexpr size_t csQueueSize = tQueueSize;
 
 private:
   class FreeRtosQueue final {
@@ -41,10 +45,10 @@ private:
       }
     }
 
-    bool pop(tMessage &aMessage, uint32_t const mPauseLength) noexcept {
+    bool pop(tMessage &aMessage, LogTime const mPauseLength) noexcept {
       bool result;
       // Safe to call empty because there will be only one consumer.
-      if(mQueue.empty() && mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mPauseLength), [this]{return mNotified;}) == std::cv_status::timeout) {
+      if(mQueue.empty() && !mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mPauseLength), [this]{return mNotified == true;})) {
         result = false;
       }
       else {
@@ -68,6 +72,10 @@ public:
 
   static void push(tMessage const &aMessage) noexcept {
     sQueue.push(aMessage);
+  }
+
+  static bool pop(tMessage &aMessage, LogTime const aPauseLength) noexcept {
+    return sQueue.pop(aMessage, aPauseLength);
   }
 };
 

@@ -21,6 +21,23 @@ public:
   static constexpr TaskId csIsrTaskId         = std::numeric_limits<TaskId>::min();
   static constexpr TaskId csFirstNormalTaskId = csIsrTaskId + 1u;
 
+  class Occupier final {
+  public:
+    Occupier() = default;
+
+    void* occupy(size_t const aSize) noexcept {
+      return new std::byte[aSize];
+    }
+
+    void release(void* const aPointer) noexcept {
+      delete[](static_cast<std::byte*>(aPointer));
+    }
+    
+    void badAlloc() {
+      throw std::bad_alloc();
+    }
+  };
+
 private:
   inline static constexpr char csErrorMessages[static_cast<size_t>(Exception::cCount)][40] = {
     "cOutOfTaskIdsOrDoubleRegistration", "cOutOfTopics", "cSenderError"
@@ -29,6 +46,7 @@ private:
   inline static constexpr char csFatalError[]      = "Fatal: ";
   inline static constexpr char csUnknownTaskName[] = "UNKNOWN";
   inline static constexpr char csIsrTaskName[]     = "ISR";
+  inline static constexpr auto csWaitForPollPeriod = std::chrono::milliseconds(10);
 
   struct TaskNameId {
     std::string mName;
@@ -178,6 +196,12 @@ public:
   template<typename tClass>
   static void _deleteArray(tClass* aPointer) {
     ::delete[] aPointer;
+  }
+
+  static void waitFor(std::atomic<bool> const &aReady) noexcept {
+    while(!aReady) {
+      std::this_thread::sleep_for(csWaitForPollPeriod);
+    }
   }
 };
 

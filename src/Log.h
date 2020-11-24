@@ -2,6 +2,7 @@
 #define NOWTECH_LOG
 
 #include "LogMessageBase.h"
+#include "PoolAllocator.h"
 #include <type_traits>
 #include <algorithm>
 #include <atomic>
@@ -25,11 +26,11 @@ enum class TaskRepresentation : uint8_t {
 
 using LogTopic = int8_t; // this needs to be signed to let the overload resolution work
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize>
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod>
 class Log;
 
 class TopicInstance final {
-  template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize>
+  template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod>
   friend class Log;
 
 public:
@@ -104,7 +105,7 @@ enum class LogShiftChainEndMarker : uint8_t {
   cEnd      = 0u
 };
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize>
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod>
 class Log final {
 private:
   static constexpr bool csShutDownLog      = tSender::csVoid;
@@ -113,16 +114,24 @@ private:
   using tAppInterface = typename tSender::tAppInterface_;
   using tConverter = typename tSender::tConverter_;
   using ConversionResult = typename tConverter::ConversionResult;
+  using LogTime = typename tAppInterface::LogTime;
   using TopicName = char const *;
-  
-  static constexpr TaskId  csInvalidTaskId   = tAppInterface::csInvalidTaskId;
-  static constexpr TaskId  csIsrTaskId       = tAppInterface::csIsrTaskId;
+
+  using Occupier = typename tAppInterface::Occupier;
+  using Allocator = memory::PoolAllocator<tMessage, Occupier>;
+  using MessageQueue = std::list<tMessage, Allocator>;
+  using MessageQueueArray = std::array<MessageQueue*, tMaxTopicCount>;
+  static constexpr size_t   csQueueSize        = tQueue::csQueueSize;
+  static constexpr TaskId   csInvalidTaskId    = tAppInterface::csInvalidTaskId;
+  static constexpr TaskId   csIsrTaskId        = tAppInterface::csIsrTaskId;
+  static constexpr size_t   csListItemOverhead = sizeof(void*) * 8u;
   
   static constexpr LogTopic csFirstFreeTopic = 0;
 
   static_assert(csInvalidTaskId == std::numeric_limits<TaskId>::max());
   static_assert(csIsrTaskId == std::numeric_limits<TaskId>::min());
   static_assert(tAppInterface::csMaxTaskCount < std::numeric_limits<TaskId>::max());
+  static_assert(std::is_same_v<tAppInterface, typename tQueue::tAppInterface_>);
 
   inline static constexpr char csRegisteredTask[]    = "-=- Registered task:";
   inline static constexpr char csUnregisteredTask[]  = "-=- Unregistered task:";
@@ -130,7 +139,12 @@ private:
   inline static LogConfig const * sConfig;
   inline static std::atomic<LogTopic> sNextFreeTopic;
   inline static std::atomic<bool> sKeepAliveTask;
+  inline static std::atomic<bool> sFinished;
   inline static std::array<TopicName, tMaxTopicCount> sRegisteredTopics;
+
+  inline static Occupier           sOccupier;
+  inline static Allocator         *sAllocator;
+  inline static MessageQueueArray *sMessageQueues;
 
   Log() = delete;
 
@@ -293,6 +307,15 @@ public:
   static void init(LogConfig const &aConfig) {
     sConfig = &aConfig;
     if constexpr(csSendInBackground) {
+      std::byte experiment[sizeof(tMessage) + csListItemOverhead];
+      tMessage example;
+      size_t nodeSize = memory::AllocatorBlockGauge<std::list<tMessage>>::getNodeSize(experiment, example);
+      sAllocator = tAppInterface::template _new<Allocator>(csQueueSize, nodeSize, sOccupier);
+      sMessageQueues = tAppInterface::template _new<MessageQueueArray>();
+      auto &messageQueues = *sMessageQueues;
+      for(size_t i = 0; i < tMaxTopicCount; ++i) {
+        messageQueues[i] = tAppInterface::template _new<MessageQueue>(*sAllocator);
+      }
       sKeepAliveTask = true;
       tAppInterface::init([](){ transmitterTaskFunction(); });
     }
@@ -307,6 +330,17 @@ public:
   // TODO note in docs about init and done sequence
   static void done() {
     sKeepAliveTask = false;
+    tAppInterface::waitFor(sFinished);
+    if constexpr(csSendInBackground) {
+      auto &messageQueues = *sMessageQueues;
+      for(size_t i = 0; i < tMaxTopicCount; ++i) {
+        tAppInterface::template _delete<MessageQueue>(messageQueues[i]);
+      }
+      tAppInterface::template _delete<MessageQueueArray>(sMessageQueues);
+      tAppInterface::template _delete<Allocator>(sAllocator);
+    }
+    else { // nothing to do
+    }
     tQueue::done();
     tSender::done();
     tAppInterface::done();
@@ -447,9 +481,16 @@ private:
   }
 
   static void transmitterTaskFunction() noexcept {
+    sFinished = false;
     while(sKeepAliveTask) {
-      
+      tMessage message;
+      if(tQueue::pop(message, tRefreshPeriod)) {
+
+      }
+      else { // nothing to do
+      }
     }
+    sFinished = true;
   }
 
 };

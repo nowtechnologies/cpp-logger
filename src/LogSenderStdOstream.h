@@ -6,7 +6,7 @@
 
 namespace nowtech::log {
 
-template<typename tAppInterface, typename tConverter, size_t tTransmitBufferSize, typename tAppInterface::LogTime tTimeout, typename tAppInterface::LogTime tRefreshPeriod>
+template<typename tAppInterface, typename tConverter, size_t tTransmitBufferSize, typename tAppInterface::LogTime tTimeout>
 class SenderStdOstream final {
 public:
   using tAppInterface_ = tAppInterface;

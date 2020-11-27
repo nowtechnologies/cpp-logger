@@ -1,9 +1,10 @@
 
-#ifndef NOWTECH_LOG_MESSAGE_BASE
-#define NOWTECH_LOG_MESSAGE_BASE
+#ifndef NOWTECH_LOG_MESSAGE_COMPACT
+#define NOWTECH_LOG_MESSAGE_COMPACT
 
 #include "LogMessageBase.h"
 #include <array>
+#include <cstring>
 
 namespace nowtech::log {
 
@@ -12,7 +13,7 @@ template<size_t tPayloadSize>
 class MessageCompact final : public MessageBase<tPayloadSize> {
 private:
   enum class Type : uint8_t {
-    cInvalid, cFloat, cDouble, cLongDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray;
+    cInvalid, cFloat, cDouble, cLongDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray
   };
 
 public:
@@ -48,7 +49,10 @@ public:
   template<> Type getType<int32_t>() const noexcept { return Type::cInt32_t; }
   template<> Type getType<int64_t>() const noexcept { return Type::cInt64_t; }
   template<> Type getType<char>() const noexcept { return Type::cChar; }
-  template<> Type getType<char*>() const noexcept { return Type::cCharArray; }
+  template<> Type getType<char *>() const noexcept { return Type::cCharArray; }
+  template<> Type getType<char * const>() const noexcept { return Type::cCharArray; }
+  template<> Type getType<char const *>() const noexcept { return Type::cCharArray; }
+  template<> Type getType<char const * const>() const noexcept { return Type::cCharArray; }
 
   uint8_t data() noexcept {
     return mData;
@@ -65,7 +69,7 @@ public:
   template<typename tConverter>
   void output(tConverter& aConverter) const noexcept {
     Type type = static_cast<Type>(mData[csOffsetType]);
-    uint8_t base = LogFormat::uint2base(mData[csOffsetBase]);
+    uint8_t base = mData[csOffsetBase];
     uint8_t fill = mData[csOffsetFill];
 
     if(type == Type::cFloat) {
@@ -126,11 +130,11 @@ public:
   }
 
   bool isTerminal() const noexcept {
-    return mData[csOffsetMessageSequence] == csTerminal;
+    return mData[csOffsetMessageSequence] == MessageBase<tPayloadSize>::csTerminal;
   }
 
   uint8_t getBase() const noexcept {
-    return LogFormat::uint2base(mData[csOffsetBase]);
+    return mData[csOffsetBase];
   }  
 
   uint8_t getFill() const noexcept {

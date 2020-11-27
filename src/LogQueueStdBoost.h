@@ -35,6 +35,10 @@ private:
 
     ~FreeRtosQueue() noexcept = default;
 
+    bool empty() const noexcept {
+      return mQueue.empty();
+    }
+
     void push(tMessage const &aMessage) noexcept {
       bool success = mQueue.bounded_push(aMessage);
       if(success) {
@@ -68,6 +72,10 @@ public:
   }
 
   static void done() {  // nothing to do
+  }
+
+  static bool empty() noexcept {
+    return sQueue.empty();
   }
 
   static void push(tMessage const &aMessage) noexcept {

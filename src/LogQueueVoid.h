@@ -5,10 +5,12 @@
 
 namespace nowtech::log {
 
-template<typename tMessage, size_t tQueueSize>
+template<typename tMessage, typename tAppInterface, size_t tQueueSize>
 class QueueVoid final {
 public:
   using tMessage_ = tMessage;
+  using tAppInterface_ = tAppInterface;
+  using LogTime = typename tAppInterface::LogTime;
 
 private:
   QueueVoid() = delete;
@@ -18,6 +20,15 @@ public:
   }
 
   static void done() {  // nothing to do
+  }
+
+  static bool empty() noexcept { // nothing to do
+  }
+
+  static void push(tMessage const &aMessage) noexcept { // nothing to do
+  }
+
+  static bool pop(tMessage &aMessage, LogTime const aPauseLength) noexcept { // nothing to do
   }
 };
 

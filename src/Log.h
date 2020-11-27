@@ -9,6 +9,8 @@
 #include <limits>
 #include <array>
 
+#include <iostream>
+
 namespace nowtech::log {
   
 enum class Exception : uint8_t {
@@ -117,20 +119,26 @@ private:
   using LogTime = typename tAppInterface::LogTime;
   using TopicName = char const *;
 
+  static constexpr size_t   csQueueSize         = tQueue::csQueueSize;
+  static constexpr TaskId   csInvalidTaskId     = tAppInterface::csInvalidTaskId;
+  static constexpr TaskId   csIsrTaskId         = tAppInterface::csIsrTaskId;
+  static constexpr TaskId   csMaxTaskCount      = tAppInterface::csMaxTaskCount;
+  static constexpr TaskId   csMaxTotalTaskCount = tAppInterface::csMaxTaskCount + 1u;
+  static constexpr size_t   csListItemOverhead  = sizeof(void*) * 8u;
+  
+  static constexpr LogTopic csFirstFreeTopic    = 0;
+  static constexpr MessageSequence csSequence0  = 0u;
+  static constexpr MessageSequence csSequence1  = 1u;
+
   using Occupier = typename tAppInterface::Occupier;
   using Allocator = memory::PoolAllocator<tMessage, Occupier>;
   using MessageQueue = std::list<tMessage, Allocator>;
-  using MessageQueueArray = std::array<MessageQueue*, tMaxTopicCount>;
-  static constexpr size_t   csQueueSize        = tQueue::csQueueSize;
-  static constexpr TaskId   csInvalidTaskId    = tAppInterface::csInvalidTaskId;
-  static constexpr TaskId   csIsrTaskId        = tAppInterface::csIsrTaskId;
-  static constexpr size_t   csListItemOverhead = sizeof(void*) * 8u;
-  
-  static constexpr LogTopic csFirstFreeTopic = 0;
+  using MessageQueueArray = std::array<MessageQueue*, csMaxTotalTaskCount>; // Need the indirection to be able use allocator in constructor call.
+  // Could introduce a new list type but the performance gain would be less than a percent.
 
   static_assert(csInvalidTaskId == std::numeric_limits<TaskId>::max());
   static_assert(csIsrTaskId == std::numeric_limits<TaskId>::min());
-  static_assert(tAppInterface::csMaxTaskCount < std::numeric_limits<TaskId>::max());
+  static_assert(csMaxTaskCount < std::numeric_limits<TaskId>::max());
   static_assert(std::is_same_v<tAppInterface, typename tQueue::tAppInterface_>);
 
   inline static constexpr char csRegisteredTask[]    = "-=- Registered task:";
@@ -139,7 +147,6 @@ private:
   inline static LogConfig const * sConfig;
   inline static std::atomic<LogTopic> sNextFreeTopic;
   inline static std::atomic<bool> sKeepAliveTask;
-  inline static std::atomic<bool> sFinished;
   inline static std::array<TopicName, tMaxTopicCount> sRegisteredTopics;
 
   inline static Occupier           sOccupier;
@@ -184,7 +191,7 @@ private:
         }
         tMessage message;
         message.set(aValue, format, mTaskId, mNextSequence);
-        if(mNextSequence == 0u) {
+        if(mNextSequence == csSequence0) {
           mFirstMessage = message;
         }
         else {
@@ -313,7 +320,7 @@ public:
       sAllocator = tAppInterface::template _new<Allocator>(csQueueSize, nodeSize, sOccupier);
       sMessageQueues = tAppInterface::template _new<MessageQueueArray>();
       auto &messageQueues = *sMessageQueues;
-      for(size_t i = 0; i < tMaxTopicCount; ++i) {
+      for(size_t i = 0; i < csMaxTotalTaskCount; ++i) {
         messageQueues[i] = tAppInterface::template _new<MessageQueue>(*sAllocator);
       }
       sKeepAliveTask = true;
@@ -329,9 +336,9 @@ public:
 
   // TODO note in docs about init and done sequence
   static void done() {
-    sKeepAliveTask = false;
-    tAppInterface::waitFor(sFinished);
     if constexpr(csSendInBackground) {
+      sKeepAliveTask = false;
+      tAppInterface::waitForFinished();
       auto &messageQueues = *sMessageQueues;
       for(size_t i = 0; i < tMaxTopicCount; ++i) {
         tAppInterface::template _delete<MessageQueue>(messageQueues[i]);
@@ -481,18 +488,69 @@ private:
   }
 
   static void transmitterTaskFunction() noexcept {
-    sFinished = false;
-    while(sKeepAliveTask) {
+    while(sKeepAliveTask || !tQueue::empty()) {
       tMessage message;
       if(tQueue::pop(message, tRefreshPeriod)) {
-
+        std::cerr << static_cast<uint16_t>(message.getMessageSequence()) << std::endl;
+        auto list = sMessageQueues->at(message.getTaskId());
+        bool ready = checkAndInsert(*list, message);
+        if(ready) {
+          transmit(*list);
+        }
+        else { // nothing to do
+        }
       }
       else { // nothing to do
       }
     }
-    sFinished = true;
+    tAppInterface::finish();
   }
 
+  // Returns true if the list is ready for transmission.
+  static bool checkAndInsert(MessageQueue &aList, tMessage const &aMessage) noexcept {
+    bool result = false;
+    auto sequence = aMessage.getMessageSequence();
+    if(aList.empty()) {
+      if(sequence <= csSequence1 && sAllocator->hasFree()) {
+        result = push(aList, aMessage, sequence);
+      }
+      else { // nothing to do
+      }
+    }
+    else {
+      auto lastSequence = aList.back().getMessageSequence();
+      if((sequence == csSequence0 || sequence == lastSequence + 1u) && sAllocator->hasFree()) {
+        result = push(aList, aMessage, sequence);
+      }
+      else {
+        aList.clear();
+      }
+    }
+    return result;
+  }
+
+  static bool push(MessageQueue &aList, tMessage const &aMessage, MessageSequence const aSequence) noexcept {
+    bool result;
+    if(aSequence == csSequence0) {
+      aList.push_front(aMessage);
+      result = true;
+    }
+    else {
+      aList.push_back(aMessage);
+      result = false;
+    }
+    return result;
+  }
+
+  static void transmit(MessageQueue &aList) noexcept {
+    auto [begin, end] = tSender::getBuffer();
+    tConverter converter(begin, end);
+    for(auto &message : aList) {
+      message.template output<tConverter>(converter);
+    }
+    converter.terminateSequence();
+    tSender::send(begin, converter.end()); // TODO postpone
+  }
 };
 
 }

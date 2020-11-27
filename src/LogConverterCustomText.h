@@ -14,7 +14,8 @@ namespace nowtech::log {
 template<bool tArchitecture64, uint8_t tAppendStackBufferSize, bool tAppendBasePrefix, bool tAlignSigned>
 class ConverterCustomText final {
 public:
-  using ConversionResult = char; 
+  using ConversionResult = char;
+  using Iterator         = char*;
 
 private:
   using IntegerConversionUnsigned = std::conditional_t<tArchitecture64, uint64_t, uint32_t>;
@@ -38,8 +39,7 @@ private:
 
   inline static constexpr char csNan[]            = "nan";
   inline static constexpr char csInf[]            = "inf";
-  using Iterator = char*;
-
+  
   Iterator       mBegin;
   Iterator const mEnd;
 

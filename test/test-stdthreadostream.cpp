@@ -25,6 +25,7 @@
 #include "LogConverterCustomText.h"
 #include "LogSenderStdOstream.h"
 #include "LogQueueStdBoost.h"
+#include "LogMessageCompact.h"
 #include "LogMessageVariant.h"
 #include "Log.h"
 
@@ -33,7 +34,7 @@
 
 // clang++ -std=c++20 -Isrc -Itest test/test-stdostream.cpp -lpthread -o test-stdostream
 
-constexpr size_t cgThreadCount = 10;
+constexpr size_t cgThreadCount = 0;
 
 char cgThreadNames[10][10] = {
   "thread_0",
@@ -71,7 +72,7 @@ constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterfaceStd::LogTime cgRefreshPeriod = 444;
 using LogConverterCustomText = nowtech::log::ConverterCustomText<cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
 using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
-using LogMessage = nowtech::log::MessageVariant<cgPayloadSize>;
+using LogMessage = nowtech::log::MessageCompact<cgPayloadSize>; //nowtech::log::MessageVariant<cgPayloadSize>;
 using LogQueueStdBoost = nowtech::log::QueueStdBoost<LogMessage, LogAppInterfaceStd, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueueStdBoost, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
  
@@ -86,7 +87,7 @@ void delayedLog(size_t n) {
 }
 
 int main() {
-  std::thread threads[cgThreadCount];
+  std::thread threads[cgThreadCount + 1u]; // let there be zero threads
   
   nowtech::log::LogConfig logConfig;
   logConfig.allowRegistrationLog = true;

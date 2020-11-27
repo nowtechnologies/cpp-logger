@@ -9,6 +9,7 @@
 #include <chrono>
 #include <thread>
 #include <functional>
+#include <condition_variable>
 
 namespace nowtech::log {
 
@@ -39,6 +40,29 @@ public:
   };
 
 private:
+  class Semaphore final {
+  private:
+    std::atomic<bool>              mNotified = false;
+    std::mutex                     mMutex;
+    std::unique_lock<std::mutex>   mLock;
+    std::condition_variable        mConditionVariable;
+
+  public:
+    Semaphore() noexcept : mLock(mMutex) {
+    }
+
+    void wait() noexcept {
+      mConditionVariable.wait(mLock, [this] { return mNotified == true; });
+    }
+
+    void notify() noexcept {
+      mNotified = true;
+      mConditionVariable.notify_one();
+    }
+  };
+
+  inline static Semaphore sSemaphore;
+
   inline static constexpr char csErrorMessages[static_cast<size_t>(Exception::cCount)][40] = {
     "cOutOfTaskIdsOrDoubleRegistration", "cOutOfTopics", "cSenderError"
   };
@@ -46,7 +70,6 @@ private:
   inline static constexpr char csFatalError[]      = "Fatal: ";
   inline static constexpr char csUnknownTaskName[] = "UNKNOWN";
   inline static constexpr char csIsrTaskName[]     = "ISR";
-  inline static constexpr auto csWaitForPollPeriod = std::chrono::milliseconds(10);
 
   struct TaskNameId {
     std::string mName;
@@ -164,6 +187,14 @@ public:
     return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
   }
 
+  static void finish() noexcept {
+    sSemaphore.notify();
+  }
+
+  static void waitForFinished() noexcept {
+    sSemaphore.wait();
+  }
+
   static void lock() noexcept { // Now don't care.
   }
 
@@ -196,12 +227,6 @@ public:
   template<typename tClass>
   static void _deleteArray(tClass* aPointer) {
     ::delete[] aPointer;
-  }
-
-  static void waitFor(std::atomic<bool> const &aReady) noexcept {
-    while(!aReady) {
-      std::this_thread::sleep_for(csWaitForPollPeriod);
-    }
   }
 };
 

@@ -39,7 +39,9 @@ private:
 
   inline static constexpr char csNan[]            = "nan";
   inline static constexpr char csInf[]            = "inf";
-  
+  inline static constexpr char csTrue[]           = "true";
+  inline static constexpr char csFalse[]          = "false";
+
   Iterator       mBegin;
   Iterator const mEnd;
 
@@ -120,6 +122,11 @@ public:
 
   void convert(char const * const aValue, uint8_t const, uint8_t const) noexcept {
     append(aValue);
+    appendSpace();
+  }
+
+  void convert(bool const aValue, uint8_t const, uint8_t const) noexcept {
+    append(aValue ? csTrue : csFalse);
     appendSpace();
   }
 

@@ -9,8 +9,6 @@
 #include <limits>
 #include <array>
 
-#include <iostream>
-
 namespace nowtech::log {
   
 enum class Exception : uint8_t {
@@ -491,7 +489,6 @@ private:
     while(sKeepAliveTask || !tQueue::empty()) {
       tMessage message;
       if(tQueue::pop(message, tRefreshPeriod)) {
-        std::cerr << static_cast<uint16_t>(message.getMessageSequence()) << std::endl;
         auto list = sMessageQueues->at(message.getTaskId());
         bool ready = checkAndInsert(*list, message);
         if(ready) {
@@ -548,6 +545,7 @@ private:
     for(auto &message : aList) {
       message.template output<tConverter>(converter);
     }
+    aList.clear();
     converter.terminateSequence();
     tSender::send(begin, converter.end()); // TODO postpone
   }

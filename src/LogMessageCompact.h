@@ -13,7 +13,7 @@ template<size_t tPayloadSize>
 class MessageCompact final : public MessageBase<tPayloadSize> {
 private:
   enum class Type : uint8_t {
-    cInvalid, cFloat, cDouble, cLongDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray
+    cInvalid, cBool, cFloat, cDouble, cLongDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray
   };
 
 public:
@@ -37,6 +37,7 @@ public:
   MessageCompact& operator=(MessageCompact &&) = default;
 
   template<typename tArgument> Type getType() const noexcept { return Type::cInvalid; }
+  template<> Type getType<bool>() const noexcept { return Type::cBool; }
   template<> Type getType<float>() const noexcept { return Type::cFloat; }
   template<> Type getType<double>() const noexcept { return Type::cDouble; }
   template<> Type getType<long double>() const noexcept { return Type::cLongDouble; }
@@ -74,6 +75,11 @@ public:
 
     if(type == Type::cFloat) {
       float value;
+      std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
+      aConverter.convert(value, base, fill);
+    }
+    else if(type == Type::cBool) {
+      bool value;
       std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
       aConverter.convert(value, base, fill);
     }

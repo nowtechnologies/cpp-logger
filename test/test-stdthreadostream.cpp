@@ -32,9 +32,9 @@
 #include <iostream>
 #include <thread>
 
-// clang++ -std=c++20 -Isrc -Itest test/test-stdostream.cpp -lpthread -o test-stdostream
+// clang++ -std=c++20 -Isrc -Icpp-memory-manager test/test-stdthreadostream.cpp -lpthread -o test-stdthreadostream
 
-constexpr size_t cgThreadCount = 0;
+constexpr size_t cgThreadCount = 10;
 
 char cgThreadNames[10][10] = {
   "thread_0",
@@ -147,9 +147,7 @@ int main() {
   }
 
   Log::unregisterCurrentTask();
-
   Log::done();
-
   return 0;
 }
 

@@ -3,6 +3,7 @@
 #define NOWTECH_LOG_MESSAGE_VARIANT
 
 #include "LogMessageBase.h"
+#include <array>
 #include <variant>
 #include <cstddef>
 #include <type_traits>
@@ -13,12 +14,17 @@ namespace nowtech::log {
 // Will be copied using operator=
 template<size_t tPayloadSize>
 class MessageVariant final : public MessageBase<tPayloadSize> {
-  using Payload32 = std::variant<bool, float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char, char const*>;
-  using Payload64 = std::variant<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*>;
-  using Payload80 = std::variant<bool, float, double, long double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*>;
+public:
+  static constexpr size_t csPayloadSize = tPayloadSize;
+
+private:
+  using Payload32 = std::variant<bool, float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char, char const*, std::array<char, csPayloadSize>>;
+  using Payload64 = std::variant<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
+  using Payload80 = std::variant<bool, float, double, long double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
   using Payload = std::conditional_t<tPayloadSize < sizeof(int64_t) && sizeof(char*) == sizeof(int32_t), Payload32,
                   std::conditional_t<tPayloadSize < sizeof(long double), Payload64, Payload80>>;
   static_assert(std::is_trivially_copyable_v<Payload>);
+  // TODO static_assert on payload size and long double -- see it when 8 in main
 
   Payload         mPayload;
   LogFormat       mFormat;

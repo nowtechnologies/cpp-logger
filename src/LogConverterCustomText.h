@@ -11,7 +11,7 @@ namespace nowtech::log {
 // TODO some solution for non-literal character arrays and/or std::strings
 
 /// Independent of STL
-template<bool tArchitecture64, uint8_t tAppendStackBufferSize, bool tAppendBasePrefix, bool tAlignSigned>
+template<typename tMessage, bool tArchitecture64, uint8_t tAppendStackBufferSize, bool tAppendBasePrefix, bool tAlignSigned>
 class ConverterCustomText final {
 public:
   using ConversionResult = char;
@@ -128,6 +128,15 @@ public:
   void convert(bool const aValue, uint8_t const, uint8_t const) noexcept {
     append(aValue ? csTrue : csFalse);
     appendSpace();
+  }
+
+  void convert(std::array<char, tMessage::csPayloadSize> const &aValue, uint8_t const, uint8_t const aFill) noexcept {
+    append(aValue.data());
+    if(aFill < LogFormat::csStoreStringFillValue) {
+      appendSpace();
+    }
+    else { // nothing to do
+    }
   }
 
   void terminateSequence() noexcept {

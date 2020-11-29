@@ -61,8 +61,8 @@ public:
   /// system and the number represents the minimum digits to write, possibly
   /// with leading zeros. When formats are applied to floating point
   /// numbers, the numeric system info is discarded.
-  inline static constexpr LogFormat B4      { 2u, 4u };
-  inline static constexpr LogFormat B8      { 2u, 8u };
+  inline static constexpr LogFormat B4      { 2u,  4u};
+  inline static constexpr LogFormat B8      { 2u,  8u};
   inline static constexpr LogFormat B12     { 2u, 12u};
   inline static constexpr LogFormat B16     { 2u, 16u};
   inline static constexpr LogFormat B24     { 2u, 24u};
@@ -84,6 +84,9 @@ public:
   inline static constexpr LogFormat X6      {16u,  6u};
   inline static constexpr LogFormat X8      {16u,  8u};
   inline static constexpr LogFormat X16     {16u, 16u};
+
+  // Indicates the next char* value should be stored in messages instead of taking only its address
+  inline static constexpr LogFormat St      {13u, LogFormat::csStoreStringFillValue };
 
   /// If true, task registration will be sent to the output in the form
   /// in the form -=- Registered task: taskname (1) -=-
@@ -117,6 +120,9 @@ private:
   using LogTime = typename tAppInterface::LogTime;
   using TopicName = char const *;
 
+  // TODO assert two tMessages are identical
+  static constexpr size_t   csPayloadSizeBr     = tMessage::csPayloadSize;
+  static constexpr size_t   csPayloadSizeNet    = tMessage::csPayloadSize - 1u;  // we leave space for terminal 0 to avoid counting bytes
   static constexpr size_t   csQueueSize         = tQueue::csQueueSize;
   static constexpr TaskId   csInvalidTaskId     = tAppInterface::csInvalidTaskId;
   static constexpr TaskId   csIsrTaskId         = tAppInterface::csIsrTaskId;
@@ -127,6 +133,7 @@ private:
   static constexpr LogTopic csFirstFreeTopic    = 0;
   static constexpr MessageSequence csSequence0  = 0u;
   static constexpr MessageSequence csSequence1  = 1u;
+  static constexpr char csTerminalChar          = 0;
 
   using Occupier = typename tAppInterface::Occupier;
   using Allocator = memory::PoolAllocator<tMessage, Occupier>;
@@ -134,6 +141,7 @@ private:
   using MessageQueueArray = std::array<MessageQueue*, csMaxTotalTaskCount>; // Need the indirection to be able use allocator in constructor call.
   // Could introduce a new list type but the performance gain would be less than a percent.
 
+  static_assert(csPayloadSizeNet > 0u);
   static_assert(csInvalidTaskId == std::numeric_limits<TaskId>::max());
   static_assert(csIsrTaskId == std::numeric_limits<TaskId>::min());
   static_assert(csMaxTaskCount < std::numeric_limits<TaskId>::max());
@@ -189,17 +197,31 @@ private:
         }
         tMessage message;
         message.set(aValue, format, mTaskId, mNextSequence);
-        if(mNextSequence == csSequence0) {
-          mFirstMessage = message;
-        }
-        else {
-          tQueue::push(message);
-        }
-        ++mNextSequence;
+        sendOrStore(message);
       }
       else { // silently discard value, nothing to do
       }
       return *this;
+    }
+
+    template<>
+    LogShiftChainHelperBackgroundSend& operator<<<char *>(char * aValue) noexcept {
+      return sendCharPointer(aValue);
+    }
+
+    template<>
+    LogShiftChainHelperBackgroundSend& operator<<<char const *>(char const * aValue) noexcept {
+      return sendCharPointer(aValue);
+    }
+
+    template<>
+    LogShiftChainHelperBackgroundSend& operator<<<char * const>(char * const aValue) noexcept {
+      return sendCharPointer(aValue);
+    }
+
+    template<>
+    LogShiftChainHelperBackgroundSend& operator<<<char const * const>(char const * const aValue) noexcept {
+      return sendCharPointer(aValue);
     }
 
     LogShiftChainHelperBackgroundSend& operator<<(LogFormat const aFormat) noexcept {
@@ -213,6 +235,53 @@ private:
       }
       else { // nothing to do
       }
+    }
+
+  private:
+    LogShiftChainHelperBackgroundSend& sendCharPointer(char const * const aValue) noexcept {
+      if(mTaskId != csInvalidTaskId && mNextSequence < std::numeric_limits<MessageSequence>::max()) {
+        LogFormat format;
+        if(mNextFormat.isValid()) {
+          format = mNextFormat;
+          mNextFormat.invalidate();
+        }
+        else {
+          format = sConfig->defaultFormat;
+        }
+        tMessage message;
+        if(format.isStoredString()) {
+          std::array<char, csPayloadSizeBr> payload;
+          char const * where = aValue;
+          while(*where != csTerminalChar) {
+            size_t copied = 0u;
+            while(*where != csTerminalChar && copied < csPayloadSizeNet) {
+              payload[copied] = *where;
+              ++where;
+              ++copied;
+            }
+            payload[copied] = csTerminalChar;
+            message.set(payload, format, mTaskId, mNextSequence);
+            sendOrStore(message);
+          }
+        }
+        else {
+          message.set(aValue, format, mTaskId, mNextSequence);
+          sendOrStore(message);
+        }
+      }
+      else { // silently discard value, nothing to do
+      }
+      return *this;
+    }
+
+    void sendOrStore(tMessage const & aMessage) noexcept {
+      if(mNextSequence == csSequence0) {
+        mFirstMessage = aMessage;
+      }
+      else {
+        tQueue::push(aMessage);
+      }
+      ++mNextSequence;
     }
   }; // class LogShiftChainHelperBackgroundSend
 

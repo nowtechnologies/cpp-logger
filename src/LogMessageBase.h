@@ -2,11 +2,14 @@
 #define NOWTECH_LOG_MESSAGE_BASE
 
 #include "LogNumericSystem.h"
+#include <limits>
 
 namespace nowtech::log {
 
 struct LogFormat final {
 public:
+  static constexpr uint8_t csStoreStringFillValue = std::numeric_limits<uint8_t>::max();
+
   uint8_t mBase;
   uint8_t mFill;
 
@@ -16,6 +19,10 @@ public:
 
   bool isValid() const noexcept {
     return mBase > NumericSystem::csInvalid && mBase <= NumericSystem::csBaseMax;
+  }
+
+  bool isStoredString() const noexcept {
+    return mFill == csStoreStringFillValue;
   }
 };
 

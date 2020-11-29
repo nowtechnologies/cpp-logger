@@ -11,15 +11,15 @@ namespace nowtech::log {
 // Will be copied via taking the data pointer. Here we go for size.
 template<size_t tPayloadSize>
 class MessageCompact final : public MessageBase<tPayloadSize> {
+public:
+  static constexpr size_t csPayloadSize = tPayloadSize + 2 * sizeof(uint8_t);
+
 private:
   enum class Type : uint8_t {
-    cInvalid, cBool, cFloat, cDouble, cLongDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray
+    cInvalid, cBool, cFloat, cDouble, cLongDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray, cStoredChars
   };
 
-public:
-  static constexpr size_t csTotalSize = tPayloadSize + 2 * sizeof(uint8_t) + sizeof(TaskId) + sizeof(MessageSequence) + sizeof(Type);
-
-private:
+  static constexpr size_t csTotalSize             = tPayloadSize + 2 * sizeof(uint8_t) + sizeof(TaskId) + sizeof(MessageSequence) + sizeof(Type);
   static constexpr size_t csOffsetPayload         = 0u;
   static constexpr size_t csOffsetBase            = csOffsetPayload + tPayloadSize;
   static constexpr size_t csOffsetFill            = csOffsetBase + sizeof(uint8_t);
@@ -37,23 +37,25 @@ public:
   MessageCompact& operator=(MessageCompact &&) = default;
 
   template<typename tArgument> Type getType() const noexcept { return Type::cInvalid; }
-  template<> Type getType<bool>() const noexcept { return Type::cBool; }
-  template<> Type getType<float>() const noexcept { return Type::cFloat; }
-  template<> Type getType<double>() const noexcept { return Type::cDouble; }
-  template<> Type getType<long double>() const noexcept { return Type::cLongDouble; }
-  template<> Type getType<uint8_t>() const noexcept { return Type::cUint8_t; }
-  template<> Type getType<uint16_t>() const noexcept { return Type::cUint16_t; }
-  template<> Type getType<uint32_t>() const noexcept { return Type::cUint32_t; }
-  template<> Type getType<uint64_t>() const noexcept { return Type::cUint64_t; }
-  template<> Type getType<int8_t>() const noexcept { return Type::cInt8_t; }
-  template<> Type getType<int16_t>() const noexcept { return Type::cInt16_t; }
-  template<> Type getType<int32_t>() const noexcept { return Type::cInt32_t; }
-  template<> Type getType<int64_t>() const noexcept { return Type::cInt64_t; }
-  template<> Type getType<char>() const noexcept { return Type::cChar; }
+  template<> Type getType<bool const>() const noexcept { return Type::cBool; }
+  template<> Type getType<float const>() const noexcept { return Type::cFloat; }
+  template<> Type getType<double const>() const noexcept { return Type::cDouble; }
+  template<> Type getType<long double const>() const noexcept { return Type::cLongDouble; }
+  template<> Type getType<uint8_t const>() const noexcept { return Type::cUint8_t; }
+  template<> Type getType<uint16_t const>() const noexcept { return Type::cUint16_t; }
+  template<> Type getType<uint32_t const>() const noexcept { return Type::cUint32_t; }
+  template<> Type getType<uint64_t const>() const noexcept { return Type::cUint64_t; }
+  template<> Type getType<int8_t const>() const noexcept { return Type::cInt8_t; }
+  template<> Type getType<int16_t const>() const noexcept { return Type::cInt16_t; }
+  template<> Type getType<int32_t const>() const noexcept { return Type::cInt32_t; }
+  template<> Type getType<int64_t const>() const noexcept { return Type::cInt64_t; }
+  template<> Type getType<char const>() const noexcept { return Type::cChar; }
   template<> Type getType<char *>() const noexcept { return Type::cCharArray; }
   template<> Type getType<char * const>() const noexcept { return Type::cCharArray; }
   template<> Type getType<char const *>() const noexcept { return Type::cCharArray; }
   template<> Type getType<char const * const>() const noexcept { return Type::cCharArray; }
+  template<> Type getType<std::array<char, csPayloadSize>>() const noexcept { return Type::cStoredChars; }
+  template<> Type getType<std::array<char, csPayloadSize> const>() const noexcept { return Type::cStoredChars; }
 
   uint8_t data() noexcept {
     return mData;
@@ -62,9 +64,14 @@ public:
   template<typename tArgument>
   void set(tArgument const aValue, LogFormat const aFormat, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
     std::memcpy(mData + csOffsetPayload, &aValue, sizeof(aValue));
-    setRest(aFormat, aTaskId, aMessageSequence);
     Type type = getType<tArgument>();
     mData[csOffsetType] = static_cast<uint8_t>(type);
+    if(type == Type::cStoredChars) {
+      setRest(aTaskId, aMessageSequence);
+    }
+    else {
+      setRest(aFormat, aTaskId, aMessageSequence);
+    }
   }
 
   template<typename tConverter>
@@ -121,6 +128,9 @@ public:
       std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
       aConverter.convert(value, base, fill);
     }
+    else if(type == Type::cStoredChars) {
+      aConverter.convert(reinterpret_cast<char const*>(mData + csOffsetPayload), base, LogFormat::csStoreStringFillValue);
+    }
     else {
       if constexpr(tPayloadSize >= sizeof(int64_t) || sizeof(char*) > sizeof(int32_t)) {
         output64<tConverter>(aConverter, base, fill);
@@ -156,6 +166,11 @@ public:
   }  
 
 private:
+  void setRest (TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
+    mData[csOffsetTaskId] = aTaskId;
+    mData[csOffsetMessageSequence] = aMessageSequence;
+  }
+
   void setRest (LogFormat const aFormat, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
     mData[csOffsetBase] = aFormat.mBase;
     mData[csOffsetFill] = aFormat.mFill;

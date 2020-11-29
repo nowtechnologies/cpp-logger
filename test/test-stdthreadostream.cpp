@@ -31,10 +31,11 @@
 
 #include <iostream>
 #include <thread>
+#include <cstring>
 
 // clang++ -std=c++20 -Isrc -Icpp-memory-manager test/test-stdthreadostream.cpp -lpthread -o test-stdthreadostream
 
-constexpr size_t cgThreadCount = 10;
+constexpr size_t cgThreadCount = 0;
 
 char cgThreadNames[10][10] = {
   "thread_0",
@@ -61,8 +62,8 @@ constexpr uint8_t cgAppendStackBufferSize = 100u;
 constexpr bool cgAppendBasePrefix = true;
 constexpr bool cgAlignSigned = false;
 constexpr size_t cgTransmitBufferSize = 123u;
-constexpr size_t cgPayloadSize = 18u;
-constexpr size_t cgQueueSize = 888u;
+constexpr size_t cgPayloadSize = 16u;
+constexpr size_t cgQueueSize = 444u;
 constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
 constexpr size_t cgDirectBufferSize = 0u;
@@ -70,9 +71,9 @@ constexpr size_t cgDirectBufferSize = 0u;
 using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr>;
 constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterfaceStd::LogTime cgRefreshPeriod = 444;
-using LogConverterCustomText = nowtech::log::ConverterCustomText<cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
+using LogMessage = nowtech::log::MessageCompact<cgPayloadSize>;
+using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
 using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
-using LogMessage = nowtech::log::MessageVariant<cgPayloadSize>;
 using LogQueueStdBoost = nowtech::log::QueueStdBoost<LogMessage, LogAppInterfaceStd, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueueStdBoost, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
  
@@ -85,6 +86,8 @@ void delayedLog(size_t n) {
   }
   Log::unregisterCurrentTask();
 }
+
+char gTextToCopy[] = "This_text_will_be_copied_in_messages.";
 
 int main() {
   std::thread threads[cgThreadCount + 1u]; // let there be zero threads
@@ -102,6 +105,10 @@ int main() {
   int64_t const int64 = -123456789012345;
 
   Log::i(nowtech::LogTopics::surplus) << "message" << Log::end;
+  for(size_t remaining = std::strlen(gTextToCopy); remaining > 0u; --remaining) {
+    gTextToCopy[remaining] = 0;
+    Log::n() << LC::St << gTextToCopy << '#' << Log::end; // TODO Variant: no ' ' before '#'. Compact: no '#' at all
+  }
 
   Log::i(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::n(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;

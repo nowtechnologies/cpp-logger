@@ -86,7 +86,7 @@ public:
   inline static constexpr LogFormat X16     {16u, 16u};
 
   // Indicates the next char* value should be stored in messages instead of taking only its address
-  inline static constexpr LogFormat St      {13u, LogFormat::csStoreStringFillValue };
+  inline static constexpr LogFormat St      {13u, LogFormat::csFillValueStoreString };
 
   /// If true, task registration will be sent to the output in the form
   /// in the form -=- Registered task: taskname (1) -=-
@@ -187,14 +187,7 @@ private:
     template<typename tValue>
     LogShiftChainHelperBackgroundSend& operator<<(tValue const aValue) noexcept {
       if(mTaskId != csInvalidTaskId && mNextSequence < std::numeric_limits<MessageSequence>::max()) {
-        LogFormat format;
-        if(mNextFormat.isValid()) {
-          format = mNextFormat;
-          mNextFormat.invalidate();
-        }
-        else {
-          format = sConfig->defaultFormat;
-        }
+        LogFormat format = obtainFormat();
         tMessage message;
         message.set(aValue, format, mTaskId, mNextSequence);
         sendOrStore(message);
@@ -240,14 +233,7 @@ private:
   private:
     LogShiftChainHelperBackgroundSend& sendCharPointer(char const * const aValue) noexcept {
       if(mTaskId != csInvalidTaskId && mNextSequence < std::numeric_limits<MessageSequence>::max()) {
-        LogFormat format;
-        if(mNextFormat.isValid()) {
-          format = mNextFormat;
-          mNextFormat.invalidate();
-        }
-        else {
-          format = sConfig->defaultFormat;
-        }
+        LogFormat format = obtainFormat();
         tMessage message;
         if(format.isStoredString()) {
           std::array<char, csPayloadSizeBr> payload;
@@ -260,6 +246,11 @@ private:
               ++copied;
             }
             payload[copied] = csTerminalChar;
+            if(*where == csTerminalChar) {
+              format.mFill = LogFormat::csFillValueStoreStringTerminal;
+            }
+            else { // nothing to do
+            }
             message.set(payload, format, mTaskId, mNextSequence);
             sendOrStore(message);
           }
@@ -272,6 +263,18 @@ private:
       else { // silently discard value, nothing to do
       }
       return *this;
+    }
+
+    LogFormat obtainFormat() noexcept {
+      LogFormat result;
+      if(mNextFormat.isValid()) {
+        result = mNextFormat;
+        mNextFormat.invalidate();
+      }
+      else {
+        result = sConfig->defaultFormat;
+      }
+      return result;
     }
 
     void sendOrStore(tMessage const & aMessage) noexcept {
@@ -616,7 +619,7 @@ private:
     }
     aList.clear();
     converter.terminateSequence();
-    tSender::send(begin, converter.end()); // TODO postpone
+    tSender::send(begin, converter.end());
   }
 };
 

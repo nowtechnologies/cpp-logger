@@ -12,7 +12,7 @@ namespace nowtech::log {
 template<size_t tPayloadSize>
 class MessageCompact final : public MessageBase<tPayloadSize> {
 public:
-  static constexpr size_t csPayloadSize = tPayloadSize + 2 * sizeof(uint8_t);
+  static constexpr size_t csPayloadSize = tPayloadSize + sizeof(uint8_t); // Antipattern to use the base field for storage, but we go for space saving.
 
 private:
   enum class Type : uint8_t {
@@ -37,19 +37,19 @@ public:
   MessageCompact& operator=(MessageCompact &&) = default;
 
   template<typename tArgument> Type getType() const noexcept { return Type::cInvalid; }
-  template<> Type getType<bool const>() const noexcept { return Type::cBool; }
-  template<> Type getType<float const>() const noexcept { return Type::cFloat; }
-  template<> Type getType<double const>() const noexcept { return Type::cDouble; }
-  template<> Type getType<long double const>() const noexcept { return Type::cLongDouble; }
-  template<> Type getType<uint8_t const>() const noexcept { return Type::cUint8_t; }
-  template<> Type getType<uint16_t const>() const noexcept { return Type::cUint16_t; }
-  template<> Type getType<uint32_t const>() const noexcept { return Type::cUint32_t; }
-  template<> Type getType<uint64_t const>() const noexcept { return Type::cUint64_t; }
-  template<> Type getType<int8_t const>() const noexcept { return Type::cInt8_t; }
-  template<> Type getType<int16_t const>() const noexcept { return Type::cInt16_t; }
-  template<> Type getType<int32_t const>() const noexcept { return Type::cInt32_t; }
-  template<> Type getType<int64_t const>() const noexcept { return Type::cInt64_t; }
-  template<> Type getType<char const>() const noexcept { return Type::cChar; }
+  template<> Type getType<bool>() const noexcept { return Type::cBool; }
+  template<> Type getType<float>() const noexcept { return Type::cFloat; }
+  template<> Type getType<double>() const noexcept { return Type::cDouble; }
+  template<> Type getType<long double>() const noexcept { return Type::cLongDouble; }
+  template<> Type getType<uint8_t>() const noexcept { return Type::cUint8_t; }
+  template<> Type getType<uint16_t>() const noexcept { return Type::cUint16_t; }
+  template<> Type getType<uint32_t>() const noexcept { return Type::cUint32_t; }
+  template<> Type getType<uint64_t>() const noexcept { return Type::cUint64_t; }
+  template<> Type getType<int8_t>() const noexcept { return Type::cInt8_t; }
+  template<> Type getType<int16_t>() const noexcept { return Type::cInt16_t; }
+  template<> Type getType<int32_t>() const noexcept { return Type::cInt32_t; }
+  template<> Type getType<int64_t>() const noexcept { return Type::cInt64_t; }
+  template<> Type getType<char>() const noexcept { return Type::cChar; }
   template<> Type getType<char *>() const noexcept { return Type::cCharArray; }
   template<> Type getType<char * const>() const noexcept { return Type::cCharArray; }
   template<> Type getType<char const *>() const noexcept { return Type::cCharArray; }
@@ -66,11 +66,13 @@ public:
     std::memcpy(mData + csOffsetPayload, &aValue, sizeof(aValue));
     Type type = getType<tArgument>();
     mData[csOffsetType] = static_cast<uint8_t>(type);
-    if(type == Type::cStoredChars) {
-      setRest(aTaskId, aMessageSequence);
+    mData[csOffsetFill] = aFormat.mFill;
+    mData[csOffsetTaskId] = aTaskId;
+    mData[csOffsetMessageSequence] = aMessageSequence;
+    if(type != Type::cStoredChars) {
+      mData[csOffsetBase] = aFormat.mBase;
     }
-    else {
-      setRest(aFormat, aTaskId, aMessageSequence);
+    else { // nothing to do
     }
   }
 
@@ -129,7 +131,7 @@ public:
       aConverter.convert(value, base, fill);
     }
     else if(type == Type::cStoredChars) {
-      aConverter.convert(reinterpret_cast<char const*>(mData + csOffsetPayload), base, LogFormat::csStoreStringFillValue);
+      aConverter.convert(reinterpret_cast<char const*>(mData + csOffsetPayload), base, fill);
     }
     else {
       if constexpr(tPayloadSize >= sizeof(int64_t) || sizeof(char*) > sizeof(int32_t)) {
@@ -166,18 +168,6 @@ public:
   }  
 
 private:
-  void setRest (TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
-    mData[csOffsetTaskId] = aTaskId;
-    mData[csOffsetMessageSequence] = aMessageSequence;
-  }
-
-  void setRest (LogFormat const aFormat, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
-    mData[csOffsetBase] = aFormat.mBase;
-    mData[csOffsetFill] = aFormat.mFill;
-    mData[csOffsetTaskId] = aTaskId;
-    mData[csOffsetMessageSequence] = aMessageSequence;
-  }
-
   template<typename tConverter>
   void output64(tConverter& aConverter, uint8_t const aBase, uint8_t const aFill) const noexcept {
     Type type = static_cast<Type>(mData[csOffsetType]);

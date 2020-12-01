@@ -35,7 +35,7 @@
 
 // clang++ -std=c++20 -Isrc -Icpp-memory-manager test/test-stdthreadostream.cpp -lpthread -o test-stdthreadostream
 
-constexpr size_t cgThreadCount = 0;
+constexpr size_t cgThreadCount = 10;
 
 char cgThreadNames[10][10] = {
   "thread_0",
@@ -82,7 +82,7 @@ void delayedLog(size_t n) {
   Log::i(nowtech::LogTopics::system) << static_cast<uint16_t>(n) << ": " << static_cast<uint16_t>(0) << Log::end;
   for(int64_t i = 1; i < 13; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1 << i));
-    Log::i(nowtech::LogTopics::system) << static_cast<uint16_t>(n) << ". thread delay logarithm: " << LC::X1 << i << Log::end;
+    Log::i(nowtech::LogTopics::system) << static_cast<uint16_t>(n) << "thread delay logarithm: " << LC::X1 << i << Log::end;
   }
   Log::unregisterCurrentTask();
 }
@@ -107,7 +107,7 @@ int main() {
   Log::i(nowtech::LogTopics::surplus) << "message" << Log::end;
   for(size_t remaining = std::strlen(gTextToCopy); remaining > 0u; --remaining) {
     gTextToCopy[remaining] = 0;
-    Log::n() << LC::St << gTextToCopy << '#' << Log::end; // TODO Variant: no ' ' before '#'. Compact: no '#' at all
+    Log::n() << LC::St << gTextToCopy << '#' << Log::end;
   }
 
   Log::i(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;

@@ -8,7 +8,8 @@ namespace nowtech::log {
 
 struct LogFormat final {
 public:
-  static constexpr uint8_t csStoreStringFillValue = std::numeric_limits<uint8_t>::max();
+  static constexpr uint8_t csFillValueStoreString = std::numeric_limits<uint8_t>::max();
+  static constexpr uint8_t csFillValueStoreStringTerminal = csFillValueStoreString - 1u;
 
   uint8_t mBase;
   uint8_t mFill;
@@ -22,7 +23,7 @@ public:
   }
 
   bool isStoredString() const noexcept {
-    return mFill == csStoreStringFillValue;
+    return mFill >= csFillValueStoreString;
   }
 };
 

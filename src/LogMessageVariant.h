@@ -24,7 +24,7 @@ private:
   using Payload = std::conditional_t<tPayloadSize < sizeof(int64_t) && sizeof(char*) == sizeof(int32_t), Payload32,
                   std::conditional_t<tPayloadSize < sizeof(long double), Payload64, Payload80>>;
   static_assert(std::is_trivially_copyable_v<Payload>);
-  // TODO static_assert on payload size and long double -- see it when 8 in main
+  // TODO concept on payload size and long double -- see it when 8 in main
 
   Payload         mPayload;
   LogFormat       mFormat;

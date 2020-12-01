@@ -35,7 +35,7 @@
 
 // clang++ -std=c++20 -Isrc -Icpp-memory-manager test/test-stdthreadostream.cpp -lpthread -o test-stdthreadostream
 
-constexpr size_t cgThreadCount = 10;
+constexpr size_t cgThreadCount = 0;
 
 char cgThreadNames[10][10] = {
   "thread_0",
@@ -62,7 +62,7 @@ constexpr uint8_t cgAppendStackBufferSize = 100u;
 constexpr bool cgAppendBasePrefix = true;
 constexpr bool cgAlignSigned = false;
 constexpr size_t cgTransmitBufferSize = 123u;
-constexpr size_t cgPayloadSize = 16u;
+constexpr size_t cgPayloadSize = 14u;
 constexpr size_t cgQueueSize = 444u;
 constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
@@ -141,8 +141,8 @@ int main() {
   Log::i() << "double: " << -1.234567890 << Log::end;
   Log::i() << "float: " << LC::Fm << -123.4567890f << Log::end;
   Log::i() << "double: " << LC::Fm << 123.4567890 << Log::end;
-  Log::i() << "long double: " << -0.01234567890L << Log::end;
-  Log::i() << "long double: " << LC::D16 << 0.01234567890L << Log::end;
+//  Log::i() << "long double: " << -0.01234567890L << Log::end;
+//  Log::i() << "long double: " << LC::D16 << 0.01234567890L << Log::end;
   Log::i() << "bool:" << true << Log::end;
   Log::i() << "bool:" << false << Log::end;
 

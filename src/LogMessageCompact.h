@@ -134,12 +134,12 @@ public:
       aConverter.convert(reinterpret_cast<char const*>(mData + csOffsetPayload), base, fill);
     }
     else {
-      if constexpr(tPayloadSize >= sizeof(int64_t) || sizeof(char*) > sizeof(int32_t)) {
+      if constexpr(csPayloadSize >= sizeof(int64_t) || sizeof(char*) > sizeof(int32_t)) {
         output64<tConverter>(aConverter, base, fill);
       }
       else { // nothing to do
       }
-      if constexpr(tPayloadSize > sizeof(long double)) {
+      if constexpr(csPayloadSize >= sizeof(long double)) {
         output80<tConverter>(aConverter, base, fill);
       }
       else { // nothing to do

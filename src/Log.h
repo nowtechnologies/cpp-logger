@@ -120,7 +120,6 @@ private:
   using LogTime = typename tAppInterface::LogTime;
   using TopicName = char const *;
 
-  // TODO assert two tMessages are identical
   static constexpr size_t   csPayloadSizeBr     = tMessage::csPayloadSize;
   static constexpr size_t   csPayloadSizeNet    = tMessage::csPayloadSize - 1u;  // we leave space for terminal 0 to avoid counting bytes
   static constexpr size_t   csQueueSize         = tQueue::csQueueSize;
@@ -146,6 +145,7 @@ private:
   static_assert(csIsrTaskId == std::numeric_limits<TaskId>::min());
   static_assert(csMaxTaskCount < std::numeric_limits<TaskId>::max());
   static_assert(std::is_same_v<tAppInterface, typename tQueue::tAppInterface_>);
+  static_assert(std::is_same_v<tMessage, typename tConverter::tMessage_>);
 
   inline static constexpr char csRegisteredTask[]    = "-=- Registered task:";
   inline static constexpr char csUnregisteredTask[]  = "-=- Unregistered task:";
@@ -382,132 +382,172 @@ public:
 
   // TODO remark in docs: must come before registering topics
   static void init(LogConfig const &aConfig) {
-    sConfig = &aConfig;
-    if constexpr(csSendInBackground) {
-      std::byte experiment[sizeof(tMessage) + csListItemOverhead];
-      tMessage example;
-      size_t nodeSize = memory::AllocatorBlockGauge<std::list<tMessage>>::getNodeSize(experiment, example);
-      sAllocator = tAppInterface::template _new<Allocator>(csQueueSize, nodeSize, sOccupier);
-      sMessageQueues = tAppInterface::template _new<MessageQueueArray>();
-      auto &messageQueues = *sMessageQueues;
-      for(size_t i = 0; i < csMaxTotalTaskCount; ++i) {
-        messageQueues[i] = tAppInterface::template _new<MessageQueue>(*sAllocator);
+    if constexpr(!csShutDownLog) {
+      sConfig = &aConfig;
+      if constexpr(csSendInBackground) {
+        std::byte experiment[sizeof(tMessage) + csListItemOverhead];
+        tMessage example;
+        size_t nodeSize = memory::AllocatorBlockGauge<std::list<tMessage>>::getNodeSize(experiment, example);
+        sAllocator = tAppInterface::template _new<Allocator>(csQueueSize, nodeSize, sOccupier);
+        sMessageQueues = tAppInterface::template _new<MessageQueueArray>();
+        auto &messageQueues = *sMessageQueues;
+        for (size_t i = 0; i < csMaxTotalTaskCount; ++i) {
+          messageQueues[i] = tAppInterface::template _new<MessageQueue>(*sAllocator);
+        }
+        sKeepAliveTask = true;
+        tAppInterface::init([]() { transmitterTaskFunction(); });
+      } else {
+        tAppInterface::init();
       }
-      sKeepAliveTask = true;
-      tAppInterface::init([](){ transmitterTaskFunction(); });
+      tQueue::init();
+      sNextFreeTopic = csFirstFreeTopic;
+      std::fill_n(sRegisteredTopics.begin(), tMaxTopicCount, nullptr);
     }
-    else {
-      tAppInterface::init();
+    else { // nothing to do
     }
-    tQueue::init();
-    sNextFreeTopic = csFirstFreeTopic;
-    std::fill_n(sRegisteredTopics.begin(), tMaxTopicCount, nullptr);
   }
 
   // TODO note in docs about init and done sequence
   static void done() {
-    if constexpr(csSendInBackground) {
-      sKeepAliveTask = false;
-      tAppInterface::waitForFinished();
-      auto &messageQueues = *sMessageQueues;
-      for(size_t i = 0; i < tMaxTopicCount; ++i) {
-        tAppInterface::template _delete<MessageQueue>(messageQueues[i]);
+    if constexpr(!csShutDownLog) {
+      if constexpr(csSendInBackground) {
+        sKeepAliveTask = false;
+        tAppInterface::waitForFinished();
+        auto &messageQueues = *sMessageQueues;
+        for(size_t i = 0; i < tMaxTopicCount; ++i) {
+          tAppInterface::template _delete<MessageQueue>(messageQueues[i]);
+        }
+        tAppInterface::template _delete<MessageQueueArray>(sMessageQueues);
+        tAppInterface::template _delete<Allocator>(sAllocator);
       }
-      tAppInterface::template _delete<MessageQueueArray>(sMessageQueues);
-      tAppInterface::template _delete<Allocator>(sAllocator);
+      else { // nothing to do
+      }
+      tQueue::done();
+      tSender::done();
+      tAppInterface::done();
     }
     else { // nothing to do
     }
-    tQueue::done();
-    tSender::done();
-    tAppInterface::done();
   }
 
   /// Registers the current task if not already present. It can register
   /// at most 254 tasks. All others will be handled as one.
   /// NOTE: this method locks to inhibit concurrent access of methods with the same name.
   static void registerCurrentTask() noexcept {
-    registerCurrentTask(nullptr);
+    if constexpr(!csShutDownLog) {
+      registerCurrentTask(nullptr);
+    }
+    else { // nothing to do
+    }
   }
 
-  /// Registers the current task if not already present. It can register
+/// Registers the current task if not already present. It can register
   /// at most 254 tasks. All others will be handled as one.
   /// @param aTaskName Task name to use, when the osInterface supports it.
   static void registerCurrentTask(char const * const aTaskName) {
-    TaskId taskId = tAppInterface::registerCurrentTask(aTaskName);
-    if(taskId != csInvalidTaskId) {
-      if(sConfig->allowRegistrationLog) {
-        n(taskId) << csRegisteredTask << aTaskName << taskId << end;
+    if constexpr(!csShutDownLog) {
+      TaskId taskId = tAppInterface::registerCurrentTask(aTaskName);
+      if(taskId != csInvalidTaskId) {
+        if(sConfig->allowRegistrationLog) {
+          n(taskId) << csRegisteredTask << aTaskName << taskId << end;
+        }
+        else { // nothing to do
+        }
       }
-      else { // nothing to do
+      else {
+        tAppInterface::fatalError(Exception::cOutOfTaskIdsOrDoubleRegistration);
       }
     }
-    else {
-      tAppInterface::fatalError(Exception::cOutOfTaskIdsOrDoubleRegistration);
+    else { // nothing to do
     }
   }
 
   static void unregisterCurrentTask() noexcept {
-    TaskId taskId = tAppInterface::unregisterCurrentTask();
-    if(taskId != csInvalidTaskId && sConfig->allowRegistrationLog) {
-      n(taskId) << csUnregisteredTask << taskId << end;
+    if constexpr(!csShutDownLog) {
+      TaskId taskId = tAppInterface::unregisterCurrentTask();
+      if(taskId != csInvalidTaskId && sConfig->allowRegistrationLog) {
+        n(taskId) << csUnregisteredTask << taskId << end;
+      }
+      else { // nothing to do
+      }
     }
     else { // nothing to do
     }
   }
 
   static void registerTopic(TopicInstance &aTopic, char const * const aPrefix) {
-    aTopic = sNextFreeTopic++;
-    if(aTopic >= tMaxTopicCount) {
-      tAppInterface::fatalError(Exception::cOutOfTopics);
+    if constexpr(!csShutDownLog) {
+      aTopic = sNextFreeTopic++;
+      if(aTopic >= tMaxTopicCount) {
+        tAppInterface::fatalError(Exception::cOutOfTopics);
+      }
+      else {
+        sRegisteredTopics[aTopic] = aPrefix;
+      }
     }
-    else {
-      sRegisteredTopics[aTopic] = aPrefix;
+    else { // nothing to do
     }
   }
-  
+
   static TaskId getCurrentTaskId() noexcept {
-    return tAppInterface::getCurrentTaskId();
+    if constexpr(!csShutDownLog) {
+      return tAppInterface::getCurrentTaskId();
+    }
+    else {
+      return csInvalidTaskId;
+    }
   }
 
   static auto i() noexcept {
-    TaskId const taskId = tAppInterface::getCurrentTaskId();
-    return sendHeader(taskId);
+    if constexpr(!csShutDownLog) {
+      TaskId const taskId = tAppInterface::getCurrentTaskId();
+      return sendHeader(taskId);
+    }
+    else {
+      return LogShiftChainHelper{csInvalidTaskId};
+    }
   }
 
   static LogShiftChainHelper i(TaskId const aTaskId) noexcept {
-    return sendHeader(aTaskId);
+    if constexpr(!csShutDownLog) {
+      return sendHeader(aTaskId);
+    }
+    else {
+      return LogShiftChainHelper{csInvalidTaskId};
+    }
   }
 
   static LogShiftChainHelper i(LogTopic const aTopic) noexcept {
-    if(sRegisteredTopics[aTopic] != nullptr) {
-      TaskId const taskId = tAppInterface::getCurrentTaskId();
-      return sendHeader(taskId, sRegisteredTopics[aTopic]);
+    if constexpr(!csShutDownLog) {
+      if(sRegisteredTopics[aTopic] != nullptr) {
+        TaskId const taskId = tAppInterface::getCurrentTaskId();
+        return sendHeader(taskId, sRegisteredTopics[aTopic]);
+      }
+      else {
+        return sendHeader(csInvalidTaskId);
+      }
     }
     else {
-      return sendHeader(csInvalidTaskId);
+      return LogShiftChainHelper{csInvalidTaskId};
     }
   }
 
   static LogShiftChainHelper i(LogTopic const aTopic, TaskId const aTaskId) noexcept {
-    if(sRegisteredTopics[aTopic] != nullptr) {
-      return sendHeader(aTaskId, sRegisteredTopics[aTopic]);
+    if constexpr(!csShutDownLog) {
+      if(sRegisteredTopics[aTopic] != nullptr) {
+        return sendHeader(aTaskId, sRegisteredTopics[aTopic]);
+      }
+      else {
+        return sendHeader(csInvalidTaskId);
+      }
     }
     else {
-      return sendHeader(csInvalidTaskId);
+      return LogShiftChainHelper{csInvalidTaskId};
     }
   }
 
   static LogShiftChainHelper n() noexcept {
-    return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
-  }
-
-  static LogShiftChainHelper n(TaskId const aTaskId) noexcept {
-    return LogShiftChainHelper{aTaskId};
-  }
-
-  static LogShiftChainHelper n(LogTopic const aTopic) noexcept {
-    if(sRegisteredTopics[aTopic] != nullptr) {
+    if constexpr(!csShutDownLog) {
       return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
     }
     else {
@@ -515,9 +555,37 @@ public:
     }
   }
 
-  static LogShiftChainHelper n(LogTopic const aTopic, TaskId const aTaskId) noexcept {
-    if(sRegisteredTopics[aTopic] != nullptr) {
+  static LogShiftChainHelper n(TaskId const aTaskId) noexcept {
+    if constexpr(!csShutDownLog) {
       return LogShiftChainHelper{aTaskId};
+    }
+    else {
+      return LogShiftChainHelper{csInvalidTaskId};
+    }
+  }
+
+  static LogShiftChainHelper n(LogTopic const aTopic) noexcept {
+    if constexpr(!csShutDownLog) {
+      if(sRegisteredTopics[aTopic] != nullptr) {
+        return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
+      }
+      else {
+        return LogShiftChainHelper{csInvalidTaskId};
+      }
+    }
+    else {
+      return LogShiftChainHelper{csInvalidTaskId};
+    }
+  }
+
+  static LogShiftChainHelper n(LogTopic const aTopic, TaskId const aTaskId) noexcept {
+    if constexpr(!csShutDownLog) {
+      if(sRegisteredTopics[aTopic] != nullptr) {
+        return LogShiftChainHelper{aTaskId};
+      }
+      else {
+        return LogShiftChainHelper{csInvalidTaskId};
+      }
     }
     else {
       return LogShiftChainHelper{csInvalidTaskId};

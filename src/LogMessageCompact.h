@@ -36,31 +36,6 @@ public:
   MessageCompact& operator=(MessageCompact const &) = default;
   MessageCompact& operator=(MessageCompact &&) = default;
 
-  template<typename tArgument> Type getType() const noexcept { return Type::cInvalid; }
-  template<> Type getType<bool>() const noexcept { return Type::cBool; }
-  template<> Type getType<float>() const noexcept { return Type::cFloat; }
-  template<> Type getType<double>() const noexcept { return Type::cDouble; }
-  template<> Type getType<long double>() const noexcept { return Type::cLongDouble; }
-  template<> Type getType<uint8_t>() const noexcept { return Type::cUint8_t; }
-  template<> Type getType<uint16_t>() const noexcept { return Type::cUint16_t; }
-  template<> Type getType<uint32_t>() const noexcept { return Type::cUint32_t; }
-  template<> Type getType<uint64_t>() const noexcept { return Type::cUint64_t; }
-  template<> Type getType<int8_t>() const noexcept { return Type::cInt8_t; }
-  template<> Type getType<int16_t>() const noexcept { return Type::cInt16_t; }
-  template<> Type getType<int32_t>() const noexcept { return Type::cInt32_t; }
-  template<> Type getType<int64_t>() const noexcept { return Type::cInt64_t; }
-  template<> Type getType<char>() const noexcept { return Type::cChar; }
-  template<> Type getType<char *>() const noexcept { return Type::cCharArray; }
-  template<> Type getType<char * const>() const noexcept { return Type::cCharArray; }
-  template<> Type getType<char const *>() const noexcept { return Type::cCharArray; }
-  template<> Type getType<char const * const>() const noexcept { return Type::cCharArray; }
-  template<> Type getType<std::array<char, csPayloadSize>>() const noexcept { return Type::cStoredChars; }
-  template<> Type getType<std::array<char, csPayloadSize> const>() const noexcept { return Type::cStoredChars; }
-
-  uint8_t data() noexcept {
-    return mData;
-  }
-
   template<typename tArgument>
   void set(tArgument const aValue, LogFormat const aFormat, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
     std::memcpy(mData + csOffsetPayload, &aValue, sizeof(aValue));
@@ -168,6 +143,27 @@ public:
   }  
 
 private:
+  template<typename tArgument> Type getType() const noexcept { return Type::cInvalid; }
+  template<> Type getType<bool>() const noexcept { return Type::cBool; }
+  template<> Type getType<float>() const noexcept { return Type::cFloat; }
+  template<> Type getType<double>() const noexcept { return Type::cDouble; }
+  template<> Type getType<long double>() const noexcept { return Type::cLongDouble; }
+  template<> Type getType<uint8_t>() const noexcept { return Type::cUint8_t; }
+  template<> Type getType<uint16_t>() const noexcept { return Type::cUint16_t; }
+  template<> Type getType<uint32_t>() const noexcept { return Type::cUint32_t; }
+  template<> Type getType<uint64_t>() const noexcept { return Type::cUint64_t; }
+  template<> Type getType<int8_t>() const noexcept { return Type::cInt8_t; }
+  template<> Type getType<int16_t>() const noexcept { return Type::cInt16_t; }
+  template<> Type getType<int32_t>() const noexcept { return Type::cInt32_t; }
+  template<> Type getType<int64_t>() const noexcept { return Type::cInt64_t; }
+  template<> Type getType<char>() const noexcept { return Type::cChar; }
+  template<> Type getType<char *>() const noexcept { return Type::cCharArray; }
+  template<> Type getType<char * const>() const noexcept { return Type::cCharArray; }
+  template<> Type getType<char const *>() const noexcept { return Type::cCharArray; }
+  template<> Type getType<char const * const>() const noexcept { return Type::cCharArray; }
+  template<> Type getType<std::array<char, csPayloadSize>>() const noexcept { return Type::cStoredChars; }
+  template<> Type getType<std::array<char, csPayloadSize> const>() const noexcept { return Type::cStoredChars; }
+
   template<typename tConverter>
   void output64(tConverter& aConverter, uint8_t const aBase, uint8_t const aFill) const noexcept {
     Type type = static_cast<Type>(mData[csOffsetType]);

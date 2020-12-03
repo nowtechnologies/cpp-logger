@@ -31,9 +31,9 @@
 #include <iostream>
 #include <thread>
 
-// clang++ -std=c++20 -Isrc -Itest test/test-stdostream.cpp -lpthread -o test-stdostream
+// clang++ -std=c++20 -Isrc -Icpp-memory-manager test/test-stdostream.cpp -lpthread -o test-stdostream
 
-constexpr size_t cgThreadCount = 0;
+constexpr size_t cgThreadCount = 1;
 
 char cgThreadNames[10][10] = {
   "thread_0",
@@ -61,7 +61,7 @@ constexpr bool cgAppendBasePrefix = true;
 constexpr bool cgAlignSigned = false;
 constexpr size_t cgTransmitBufferSize = 123u;
 constexpr size_t cgPayloadSize = 8u;
-constexpr size_t cgQueueSize = 8u;
+constexpr size_t cgQueueSize = 444u;
 constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
 constexpr size_t cgDirectBufferSize = 43u;
@@ -69,9 +69,9 @@ constexpr size_t cgDirectBufferSize = 43u;
 using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr>;
 constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterfaceStd::LogTime cgRefreshPeriod = 444;
-using LogConverterCustomText = nowtech::log::ConverterCustomText<cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
-using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogMessage = nowtech::log::MessageVariant<cgPayloadSize>;
+using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
+using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogQueueVoid = nowtech::log::QueueVoid<LogMessage, LogAppInterfaceStd, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueueVoid, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
  

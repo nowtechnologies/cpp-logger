@@ -25,10 +25,10 @@ public:
   static bool empty() noexcept { // nothing to do
   }
 
-  static void push(tMessage const &aMessage) noexcept { // nothing to do
+  static void push(tMessage const) noexcept { // nothing to do
   }
 
-  static bool pop(tMessage &aMessage, LogTime const aPauseLength) noexcept { // nothing to do
+  static bool pop(tMessage &, LogTime const) noexcept { // nothing to do
   }
 };
 

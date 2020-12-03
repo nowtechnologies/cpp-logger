@@ -6,14 +6,14 @@
 
 namespace nowtech::log {
 
-// TODO for concept: unused parameters (with no name) don't get filled in a call
-
 /// Independent of STL
 template<typename tMessage, bool tArchitecture64, uint8_t tAppendStackBufferSize, bool tAppendBasePrefix, bool tAlignSigned>
 class ConverterCustomText final {
 public:
+  using tMessage_        = tMessage;
   using ConversionResult = char;
   using Iterator         = char*;
+  static constexpr Iterator csNullIterator = nullptr; // Used in SenderVoid to return void begin-end pair.
 
 private:
   using IntegerConversionUnsigned = std::conditional_t<tArchitecture64, uint64_t, uint32_t>;

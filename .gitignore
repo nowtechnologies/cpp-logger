@@ -33,4 +33,8 @@ test-stdthreadostream
 *.app
 test-stdthreadostream
 test-stdostream
+test-sizes
+test-sizes.s
+test-sizes.asm
+test-sizes.map
 refactor.ods

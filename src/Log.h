@@ -399,7 +399,7 @@ public:
           messageQueues[i] = tAppInterface::template _new<MessageQueue>(*sAllocator);
         }
         sKeepAliveTask = true;
-        tAppInterface::init([]() { transmitterTaskFunction(); }, std::forward<tTypes>(aArgs)...);
+        tAppInterface::init(transmitterTaskFunction, std::forward<tTypes>(aArgs)...);
       } else {
         tAppInterface::init();
       }

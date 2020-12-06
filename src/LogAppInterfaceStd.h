@@ -7,7 +7,6 @@
 #include <mutex>
 #include <chrono>
 #include <thread>
-#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <condition_variable>
@@ -100,7 +99,7 @@ public:
     }
   }
 
-  static void init(std::function<void(void)> aFunction) {
+  static void init(void(*aFunction)(void)) {
     init();
     sTransmitterThread = new std::thread(aFunction);
   }

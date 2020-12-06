@@ -16,7 +16,7 @@ public:
 
 private:
   enum class Type : uint8_t {
-    cInvalid, cBool, cFloat, cDouble, cLongDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray, cStoredChars
+    cInvalid, cShutdown, cBool, cFloat, cDouble, cLongDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray, cStoredChars
   };
 
   static constexpr size_t csTotalSize             = tPayloadSize + 2 * sizeof(uint8_t) + sizeof(TaskId) + sizeof(MessageSequence) + sizeof(Type);
@@ -35,6 +35,11 @@ public:
   MessageCompact(MessageCompact &&) = default;
   MessageCompact& operator=(MessageCompact const &) = default;
   MessageCompact& operator=(MessageCompact &&) = default;
+
+  void setShutdown(TaskId const aTaskId) noexcept {
+    mData[csOffsetType] = static_cast<uint8_t>(Type::cShutdown);
+    mData[csOffsetTaskId] = aTaskId;
+  }
 
   template<typename tArgument>
   void set(tArgument const aValue, LogFormat const aFormat, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
@@ -120,6 +125,10 @@ public:
       else { // nothing to do
       }
     }
+  }
+
+  bool isShutdown() const noexcept {
+    return static_cast<Type>(mData[csOffsetType]) == Type::cShutdown;
   }
 
   bool isTerminal() const noexcept {

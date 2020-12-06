@@ -55,6 +55,7 @@ namespace nowtech::LogTopics {
 
 constexpr nowtech::log::TaskId cgMaxTaskCount = cgThreadCount + 1;
 constexpr bool cgLogFromIsr = false;
+constexpr size_t cgTaskShutdownSleepPeriod = 100u;
 constexpr bool cgArchitecture64 = true;
 constexpr uint8_t cgAppendStackBufferSize = 100u;
 constexpr bool cgAppendBasePrefix = true;
@@ -66,7 +67,7 @@ constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
 constexpr size_t cgDirectBufferSize = 43u;
 
-using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr>;
+using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterfaceStd::LogTime cgRefreshPeriod = 444;
 using LogMessage = nowtech::log::MessageVariant<cgPayloadSize>;

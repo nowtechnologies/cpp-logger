@@ -58,6 +58,9 @@ public:
     return mBegin;
   }
 
+  void convert(ShutdownMessageContent const, uint8_t const, uint8_t const) noexcept { // nothing to do
+  }
+
   void convert(float const aValue, uint8_t const, uint8_t const aFill) noexcept {
     append(static_cast<long double>(aValue), aFill == 0u ? csMaxDigitCountFloat : aFill);
     appendSpace();

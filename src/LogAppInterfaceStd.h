@@ -1,19 +1,20 @@
-#ifndef LOG_APP_INTERFACE_STD
-#define LOG_APP_INTERFACE_STD
+#ifndef NOWTECH_LOG_APP_INTERFACE_STD
+#define NOWTECH_LOG_APP_INTERFACE_STD
 
 #include "Log.h"
 #include <ios>
-#include <map>
-#include <set>
+#include <array>
 #include <mutex>
 #include <chrono>
 #include <thread>
 #include <functional>
+#include <unordered_map>
+#include <unordered_set>
 #include <condition_variable>
 
 namespace nowtech::log {
 
-template<LogTopic tMaxTaskCount, bool tLogFromIsr>
+template<LogTopic tMaxTaskCount, bool tLogFromIsr, size_t tTaskShutdownSleepPeriod>
 class AppInterfaceStd final {
 public:
   using LogTime = uint32_t;
@@ -66,10 +67,12 @@ private:
   inline static constexpr char csErrorMessages[static_cast<size_t>(Exception::cCount)][40] = {
     "cOutOfTaskIdsOrDoubleRegistration", "cOutOfTopics", "cSenderError"
   };
-  inline static constexpr char csError[]           = "Error: ";
-  inline static constexpr char csFatalError[]      = "Fatal: ";
-  inline static constexpr char csUnknownTaskName[] = "UNKNOWN";
-  inline static constexpr char csIsrTaskName[]     = "ISR";
+  inline static constexpr char   csError[]            = "Error: ";
+  inline static constexpr char   csFatalError[]       = "Fatal: ";
+  inline static constexpr char   csUnknownTaskName[]  = "UNKNOWN";
+  inline static constexpr char   csIsrTaskName[]      = "ISR";
+  inline static constexpr size_t csTaskId2threadsSize = csMaxTaskCount + 1u;
+  inline static const std::thread::id csNoThreadId;
 
   struct TaskNameId {
     std::string mName;
@@ -82,9 +85,9 @@ private:
     }
   };
 
-  inline static std::map<std::thread::id, TaskNameId> sThreadId2taskNamesIds;
-  inline static std::map<TaskId, std::thread::id> sTaskId2threads;
-  inline static std::set<TaskId> sFreeTaskIds;
+  inline static std::unordered_map<std::thread::id, TaskNameId> sThreadId2taskNamesIds;
+  inline static std::array<std::thread::id, csTaskId2threadsSize> sTaskId2threads;
+  inline static std::unordered_set<TaskId> sFreeTaskIds;
   inline static std::mutex sRegistrationMutex;
   inline static std::thread *sTransmitterThread;
   
@@ -105,14 +108,15 @@ public:
   static void done() {
     if(sTransmitterThread != nullptr) {
       sTransmitterThread->join();
+      delete sTransmitterThread;
     }
     else { // nothing to do
     }
     sThreadId2taskNamesIds.clear();
-    sTaskId2threads.clear();
     sFreeTaskIds.clear();
   }
 
+  /// We assume it won't get called during registering.
   static TaskId getCurrentTaskId() noexcept { // TODO in other implementations returns 0 if ISR and it is enabled. If disabled, csInvalidTaskId.
     auto threadId = std::this_thread::get_id();
     TaskId result;
@@ -153,7 +157,7 @@ public:
     auto found = sThreadId2taskNamesIds.find(std::this_thread::get_id());
     if(found != sThreadId2taskNamesIds.end()) {
       result = found->second.mId;
-      sTaskId2threads.erase(found->second.mId);
+      sTaskId2threads[found->second.mId] = std::thread::id{};
       sThreadId2taskNamesIds.erase(found);
       sFreeTaskIds.insert(result);
     }
@@ -166,10 +170,10 @@ public:
   // Application can trick supplied task IDs to make this function return a dangling pointer if concurrent task unregistration
   // occurs. Normal usage should be however safe.
   static char const * getTaskName(TaskId const aTaskId) noexcept { // TODO for other implementations: if in ISR, returns "ISR"
-    auto foundThreadId = sTaskId2threads.find(aTaskId);
+    auto found = sTaskId2threads[aTaskId];
     char const * result;
-    if(foundThreadId != sTaskId2threads.end()) {
-      auto foundTaskNameId = sThreadId2taskNamesIds.find(foundThreadId->second);
+    if(found != csNoThreadId) {
+      auto foundTaskNameId = sThreadId2taskNamesIds.find(found);
       if(foundTaskNameId != sThreadId2taskNamesIds.end()) {
         result = foundTaskNameId->second.mName.c_str();
       }
@@ -193,6 +197,10 @@ public:
 
   static void waitForFinished() noexcept {
     sSemaphore.wait();
+  }
+
+  static void sleepWhileWaitingForTaskShutdown() noexcept {
+    std::this_thread::sleep_for(std::chrono::milliseconds(tTaskShutdownSleepPeriod));
   }
 
   static void lock() noexcept { // Now don't care.

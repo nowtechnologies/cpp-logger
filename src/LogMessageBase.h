@@ -30,6 +30,10 @@ public:
 using TaskId          = uint8_t;
 using MessageSequence = uint8_t;
 
+enum class ShutdownMessageContent : uint8_t {
+  csSomething
+};
+
 template<std::size_t tPayloadSize>
 class MessageBase {
 public:

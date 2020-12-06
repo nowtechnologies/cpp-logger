@@ -18,9 +18,9 @@ public:
   static constexpr size_t csPayloadSize = tPayloadSize;
 
 private:
-  using Payload32 = std::variant<bool, float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char, char const*, std::array<char, csPayloadSize>>;
-  using Payload64 = std::variant<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
-  using Payload80 = std::variant<bool, float, double, long double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
+  using Payload32 = std::variant<ShutdownMessageContent, bool, float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char, char const*, std::array<char, csPayloadSize>>;
+  using Payload64 = std::variant<ShutdownMessageContent, bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
+  using Payload80 = std::variant<ShutdownMessageContent, bool, float, double, long double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
   using Payload = std::conditional_t<tPayloadSize < sizeof(int64_t) && sizeof(char*) == sizeof(int32_t), Payload32,
                   std::conditional_t<tPayloadSize < sizeof(long double), Payload64, Payload80>>;
   static_assert(std::is_trivially_copyable_v<Payload>);
@@ -38,6 +38,11 @@ public:
   MessageVariant& operator=(MessageVariant const &) = default;
   MessageVariant& operator=(MessageVariant &&) = default;
 
+  void setShutdown(TaskId const aTaskId) noexcept {
+    mPayload = ShutdownMessageContent::csSomething;
+    mTaskId = aTaskId;
+  }
+
   template<typename tArgument>
   void set(tArgument const aValue, LogFormat const aFormat, TaskId const aTaskId, MessageSequence const aMessageSequence) noexcept {
     mPayload = aValue;
@@ -50,6 +55,10 @@ public:
   void output(tConverter& aConverter) const noexcept {
     auto visitor = [this, &aConverter](const auto aObj) { aConverter.convert(aObj, mFormat.mBase, mFormat.mFill); };
     std::visit(visitor, mPayload);
+  }
+
+  bool isShutdown() const noexcept {
+    return std::holds_alternative<ShutdownMessageContent>(mPayload);
   }
 
   bool isTerminal() const noexcept {

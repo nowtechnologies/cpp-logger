@@ -35,7 +35,7 @@
 
 // clang++ -std=c++20 -Isrc -Icpp-memory-manager test/test-stdthreadostream.cpp -lpthread -o test-stdthreadostream
 
-constexpr size_t cgThreadCount = 1;
+constexpr size_t cgThreadCount = 2;
 
 char cgThreadNames[10][10] = {
   "thread_0",
@@ -57,6 +57,7 @@ namespace nowtech::LogTopics {
 
 constexpr nowtech::log::TaskId cgMaxTaskCount = cgThreadCount + 1;
 constexpr bool cgLogFromIsr = false;
+constexpr size_t cgTaskShutdownSleepPeriod = 100u;
 constexpr bool cgArchitecture64 = true;
 constexpr uint8_t cgAppendStackBufferSize = 100u;
 constexpr bool cgAppendBasePrefix = true;
@@ -68,10 +69,10 @@ constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
 constexpr size_t cgDirectBufferSize = 0u;
 
-using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr>;
+using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterfaceStd::LogTime cgRefreshPeriod = 444;
-using LogMessage = nowtech::log::MessageVariant<cgPayloadSize>;
+using LogMessage = nowtech::log::MessageCompact<cgPayloadSize>;
 using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
 using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogQueueStdBoost = nowtech::log::QueueStdBoost<LogMessage, LogAppInterfaceStd, cgQueueSize>;

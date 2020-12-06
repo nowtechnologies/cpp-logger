@@ -111,7 +111,7 @@ enum class LogShiftChainEndMarker : uint8_t {
 template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod>
 class Log final {
 private:
-  static constexpr bool csShutDownLog      = tSender::csVoid;
+  static constexpr bool csShutdownLog      = tSender::csVoid;
   static constexpr bool csSendInBackground = (tDirectBufferSize == 0u); // will omit tQueue
   using tMessage = typename tQueue::tMessage_;
   using tAppInterface = typename tSender::tAppInterface_;
@@ -139,6 +139,7 @@ private:
   using MessageQueue = std::list<tMessage, Allocator>;
   using MessageQueueArray = std::array<MessageQueue*, csMaxTotalTaskCount>; // Need the indirection to be able use allocator in constructor call.
   // Could introduce a new list type but the performance gain would be less than a percent.
+  using TaskShutdownArray = std::array<std::atomic<bool>, csMaxTotalTaskCount>;
 
   static_assert(csPayloadSizeNet > 0u);
   static_assert(csInvalidTaskId == std::numeric_limits<TaskId>::max());
@@ -150,10 +151,11 @@ private:
   inline static constexpr char csRegisteredTask[]    = "-=- Registered task:";
   inline static constexpr char csUnregisteredTask[]  = "-=- Unregistered task:";
   
-  inline static LogConfig const * sConfig;
-  inline static std::atomic<LogTopic> sNextFreeTopic;
-  inline static std::atomic<bool> sKeepAliveTask;
-  inline static std::array<TopicName, tMaxTopicCount> sRegisteredTopics;
+  inline static LogConfig const                       *sConfig;
+  inline static std::atomic<LogTopic>                  sNextFreeTopic;
+  inline static std::atomic<bool>                      sKeepAliveTask;
+  inline static std::array<TopicName, tMaxTopicCount>  sRegisteredTopics;
+  inline static TaskShutdownArray                     *sTaskShutdowns;
 
   inline static Occupier           sOccupier;
   inline static Allocator         *sAllocator;
@@ -374,15 +376,16 @@ private:
     }
   }; // class LogShiftChainHelperEmpty
 
-  using LogShiftChainHelper = std::conditional_t<csShutDownLog, LogShiftChainHelperEmpty, std::conditional_t<csSendInBackground, LogShiftChainHelperBackgroundSend, LogShiftChainHelperDirectSend>>;
+  using LogShiftChainHelper = std::conditional_t<csShutdownLog, LogShiftChainHelperEmpty, std::conditional_t<csSendInBackground, LogShiftChainHelperBackgroundSend, LogShiftChainHelperDirectSend>>;
 
 public:
   /// Will be used as Log << something << to << log << Log::end;
   static constexpr LogShiftChainEndMarker end = LogShiftChainEndMarker::cEnd;
 
   // TODO remark in docs: must come before registering topics
-  static void init(LogConfig const &aConfig) {
-    if constexpr(!csShutDownLog) {
+  template<typename ...tTypes>
+  static void init(LogConfig const &aConfig, tTypes... aArgs) {
+    if constexpr(!csShutdownLog) {
       sConfig = &aConfig;
       if constexpr(csSendInBackground) {
         std::byte experiment[sizeof(tMessage) + csListItemOverhead];
@@ -390,12 +393,13 @@ public:
         size_t nodeSize = memory::AllocatorBlockGauge<std::list<tMessage>>::getNodeSize(experiment, example);
         sAllocator = tAppInterface::template _new<Allocator>(csQueueSize, nodeSize, sOccupier);
         sMessageQueues = tAppInterface::template _new<MessageQueueArray>();
+        sTaskShutdowns = tAppInterface::template _new<TaskShutdownArray>();
         auto &messageQueues = *sMessageQueues;
         for (size_t i = 0; i < csMaxTotalTaskCount; ++i) {
           messageQueues[i] = tAppInterface::template _new<MessageQueue>(*sAllocator);
         }
         sKeepAliveTask = true;
-        tAppInterface::init([]() { transmitterTaskFunction(); });
+        tAppInterface::init([]() { transmitterTaskFunction(); }, std::forward<tTypes>(aArgs)...);
       } else {
         tAppInterface::init();
       }
@@ -409,15 +413,16 @@ public:
 
   // TODO note in docs about init and done sequence
   static void done() {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       if constexpr(csSendInBackground) {
         sKeepAliveTask = false;
         tAppInterface::waitForFinished();
         auto &messageQueues = *sMessageQueues;
-        for(size_t i = 0; i < tMaxTopicCount; ++i) {
+        for(size_t i = 0; i < csMaxTotalTaskCount; ++i) {
           tAppInterface::template _delete<MessageQueue>(messageQueues[i]);
         }
         tAppInterface::template _delete<MessageQueueArray>(sMessageQueues);
+        tAppInterface::template _delete<TaskShutdownArray>(sTaskShutdowns);
         tAppInterface::template _delete<Allocator>(sAllocator);
       }
       else { // nothing to do
@@ -434,7 +439,7 @@ public:
   /// at most 254 tasks. All others will be handled as one.
   /// NOTE: this method locks to inhibit concurrent access of methods with the same name.
   static void registerCurrentTask() noexcept {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       registerCurrentTask(nullptr);
     }
     else { // nothing to do
@@ -445,9 +450,14 @@ public:
   /// at most 254 tasks. All others will be handled as one.
   /// @param aTaskName Task name to use, when the osInterface supports it.
   static void registerCurrentTask(char const * const aTaskName) {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       TaskId taskId = tAppInterface::registerCurrentTask(aTaskName);
       if(taskId != csInvalidTaskId) {
+        if constexpr(csSendInBackground) {
+          (*sTaskShutdowns)[taskId] = false;
+        }
+        else { // nothing to do
+        }
         if(sConfig->allowRegistrationLog) {
           n(taskId) << csRegisteredTask << aTaskName << taskId << end;
         }
@@ -462,21 +472,33 @@ public:
     }
   }
 
+  // The thread must make sure all of its pending logging is precessed when calling this.
   static void unregisterCurrentTask() noexcept {
-    if constexpr(!csShutDownLog) {
-      TaskId taskId = tAppInterface::unregisterCurrentTask();
+    if constexpr(!csShutdownLog) {
+      TaskId taskId = tAppInterface::getCurrentTaskId();
       if(taskId != csInvalidTaskId && sConfig->allowRegistrationLog) {
         n(taskId) << csUnregisteredTask << taskId << end;
       }
       else { // nothing to do
       }
+      if constexpr(csSendInBackground) {
+        tMessage message;
+        message.setShutdown(taskId);
+        tQueue::push(message);
+        while(!(*sTaskShutdowns)[taskId]) {
+          tAppInterface::sleepWhileWaitingForTaskShutdown();
+        }
+      }
+      else { // nothing to do
+      }
+      tAppInterface::unregisterCurrentTask();
     }
     else { // nothing to do
     }
   }
 
   static void registerTopic(TopicInstance &aTopic, char const * const aPrefix) {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       aTopic = sNextFreeTopic++;
       if(aTopic >= tMaxTopicCount) {
         tAppInterface::fatalError(Exception::cOutOfTopics);
@@ -490,7 +512,7 @@ public:
   }
 
   static TaskId getCurrentTaskId() noexcept {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       return tAppInterface::getCurrentTaskId();
     }
     else {
@@ -499,7 +521,7 @@ public:
   }
 
   static auto i() noexcept {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       TaskId const taskId = tAppInterface::getCurrentTaskId();
       return sendHeader(taskId);
     }
@@ -509,7 +531,7 @@ public:
   }
 
   static LogShiftChainHelper i(TaskId const aTaskId) noexcept {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       return sendHeader(aTaskId);
     }
     else {
@@ -518,7 +540,7 @@ public:
   }
 
   static LogShiftChainHelper i(LogTopic const aTopic) noexcept {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       if(sRegisteredTopics[aTopic] != nullptr) {
         TaskId const taskId = tAppInterface::getCurrentTaskId();
         return sendHeader(taskId, sRegisteredTopics[aTopic]);
@@ -533,7 +555,7 @@ public:
   }
 
   static LogShiftChainHelper i(LogTopic const aTopic, TaskId const aTaskId) noexcept {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       if(sRegisteredTopics[aTopic] != nullptr) {
         return sendHeader(aTaskId, sRegisteredTopics[aTopic]);
       }
@@ -547,7 +569,7 @@ public:
   }
 
   static LogShiftChainHelper n() noexcept {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
     }
     else {
@@ -556,7 +578,7 @@ public:
   }
 
   static LogShiftChainHelper n(TaskId const aTaskId) noexcept {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       return LogShiftChainHelper{aTaskId};
     }
     else {
@@ -565,7 +587,7 @@ public:
   }
 
   static LogShiftChainHelper n(LogTopic const aTopic) noexcept {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       if(sRegisteredTopics[aTopic] != nullptr) {
         return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
       }
@@ -579,7 +601,7 @@ public:
   }
 
   static LogShiftChainHelper n(LogTopic const aTopic, TaskId const aTaskId) noexcept {
-    if constexpr(!csShutDownLog) {
+    if constexpr(!csShutdownLog) {
       if(sRegisteredTopics[aTopic] != nullptr) {
         return LogShiftChainHelper{aTaskId};
       }
@@ -629,12 +651,17 @@ private:
     while(sKeepAliveTask || !tQueue::empty()) {
       tMessage message;
       if(tQueue::pop(message, tRefreshPeriod)) {
-        auto list = sMessageQueues->at(message.getTaskId());
-        bool ready = checkAndInsert(*list, message);
-        if(ready) {
-          transmit(*list);
+        TaskId taskId = message.getTaskId();
+        if constexpr(csSendInBackground) {
+          if (message.isShutdown()) {
+            (*sTaskShutdowns)[taskId] = true;
+          }
+          else {
+            checkAndInsertAndTransmit(taskId, message);
+          }
         }
-        else { // nothing to do
+        else {
+          checkAndInsertAndTransmit(taskId, message);
         }
       }
       else { // nothing to do
@@ -643,27 +670,31 @@ private:
     tAppInterface::finish();
   }
 
-  // Returns true if the list is ready for transmission.
-  static bool checkAndInsert(MessageQueue &aList, tMessage const &aMessage) noexcept {
-    bool result = false;
+  static void checkAndInsertAndTransmit(TaskId const aTaskId, tMessage const &aMessage) noexcept {
+    auto list = (*sMessageQueues)[aTaskId];
+    bool ready = false;
     auto sequence = aMessage.getMessageSequence();
-    if(aList.empty()) {
+    if(list->empty()) {
       if(sequence <= csSequence1 && sAllocator->hasFree()) {
-        result = push(aList, aMessage, sequence);
+        ready = push(*list, aMessage, sequence);
       }
       else { // nothing to do
       }
     }
     else {
-      auto lastSequence = aList.back().getMessageSequence();
+      auto lastSequence = list->back().getMessageSequence();
       if((sequence == csSequence0 || sequence == lastSequence + 1u) && sAllocator->hasFree()) {
-        result = push(aList, aMessage, sequence);
+        ready = push(*list, aMessage, sequence);
       }
       else {
-        aList.clear();
+        list->clear();
       }
     }
-    return result;
+    if (ready) {
+      transmit(*list);
+    }
+    else { // nothing to do
+    }
   }
 
   static bool push(MessageQueue &aList, tMessage const &aMessage, MessageSequence const aSequence) noexcept {

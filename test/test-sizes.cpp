@@ -40,7 +40,7 @@ constexpr size_t cgQueueSize = 444u;
 constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
 
-/*
+
 constexpr size_t cgDirectBufferSize = 43u;
 using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
@@ -50,8 +50,9 @@ using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgA
 using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogQueueVoid = nowtech::log::QueueVoid<LogMessage, LogAppInterfaceStd, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueueVoid, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
+/*
    text	   data	    bss	    dec	    hex	filename
-   17839	   1122	    592	  19553	   4c61	test-sizes
+  17839	   1122	    592	  19553	   4c61	test-sizes
 */
 
 /* No log call present at all, not even cout.write, only thread creation:
@@ -84,9 +85,10 @@ using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, L
 using LogQueueStdBoost = nowtech::log::QueueStdBoost<LogMessage, LogAppInterfaceStd, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueueStdBoost, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
    text	   data	    bss	    dec	    hex	filename
-  29697	   1410	    992	  32099	   7d63	test-size
+  28411	   1306	    992	  30709	   77f5	test-sizes
   */
 
+/*
 constexpr size_t cgDirectBufferSize = 0u;
 using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
@@ -96,16 +98,14 @@ using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgA
 using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogQueueStdBoost = nowtech::log::QueueStdBoost<LogMessage, LogAppInterfaceStd, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueueStdBoost, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
-/*
    text	   data	    bss	    dec	    hex	filename
-  28185	   1410	    992	  30587	   777b	test-sizes
+  26923	   1306	    992	  29221	   7225	test-sizes
  */
 
 uint64_t cgUint32;
 int64_t cgInt32;
 double constexpr cgReal = 3.3;
 char constexpr cgString[] = "string\n";
-size_t constexpr cgLength = 7u;
 
 void todo() noexcept {
   cgUint32 = getpid();

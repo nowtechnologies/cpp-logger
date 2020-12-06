@@ -1,0 +1,234 @@
+//
+// Created by balazs on 2020. 12. 04..
+//
+
+#ifndef NOWTECH_LOG_APP_INTERFACE_FREERTOS_MINIMAL
+#define NOWTECH_LOG_APP_INTERFACE_FREERTOS_MINIMAL
+
+#include "Log.h"
+#include <array>
+#include <functional>
+#include "FreeRTOS.h"
+#include "task.h"
+#include "semphr.h"
+#include "stm32f1xx_hal.h"
+
+inline extern "C" void logTransmitterTask(void* aFunction) {
+  std::invoke(*static_cast<std::function<void(void)>*>(aFunction));
+}
+
+namespace nowtech::log {
+
+template<LogTopic tMaxTaskCount, bool tLogFromIsr>
+class AppInterfaceFreeRtosMinimal final {
+public:
+  using LogTime = uint32_t;
+  static constexpr TaskId csMaxTaskCount      = tMaxTaskCount; // Exported just to let the Log de checks.
+  static constexpr TaskId csInvalidTaskId     = std::numeric_limits<TaskId>::max();
+  static constexpr TaskId csIsrTaskId         = std::numeric_limits<TaskId>::min();
+  static constexpr TaskId csFirstNormalTaskId = csIsrTaskId + 1u;
+
+  class Occupier final {
+  public:
+    Occupier() = default;
+
+    void* occupy(size_t const aSize) noexcept {
+      return new std::byte[aSize];
+    }
+
+    void release(void* const aPointer) noexcept {
+      delete[](static_cast<std::byte*>(aPointer));
+    }
+    
+    void badAlloc() {
+      while(true) {
+      }
+    }
+  };
+
+private:
+  inline static constexpr char csUnknownTaskName[]     = "UNKNOWN";
+  inline static constexpr char csIsrTaskName[]         = "ISR";
+  inline static constexpr char csTransmitterTaskName[] = "logTx";
+  inline static constexpr TickType_t csRegistrationMutexTimeout = portMAX_DELAY;
+
+  struct TaskHandleId {
+    TaskHandle_t mHandle;
+    TaskId       mId;
+
+    TaskNameId() : mHandle(0u), mId(0u) {
+    }
+
+    TaskNameId(TaskHandle_t const aHandle, TaskId const aId) : mHandle(aHandle), mId(aId) {
+    }
+  };
+
+  inline static std::array<TaskHandleId, csMaxTaskCount> sTaskHandleIds;
+  inline static TaskId sPreviousTaskId = csFirstNormalTaskId - 1u;
+  inline static SemaphoreHandle_t sRegistrationMutex;
+  inline static TaskHandle_t &sTransmitterTask;
+  
+  AppInterfaceFreeRtosMinimal() = delete;
+
+public:
+  static void init() {
+    sRegistrationMutex = xSemaphoreCreateMutex();
+  }
+
+  static void init(std::function<void(void)> aFunction, uint32_t const aStackDepth, uint32_t const aPriority) {
+    init();
+    xTaskCreate(logTransmitterTask, csTransmitterTaskName, aStackDepth, &aFunction, aPriority, &sTransmitterTask);
+  }
+
+  static void done() { // We assume it runs forever.
+  }
+
+  /// We assume it won't get called during registering.
+  static TaskId getCurrentTaskId() noexcept {
+    TaskId result;
+    if(isInterrupt()) {
+      if constexpr (tLogFromIsr) {
+        result = csInvalidTaskId;
+      }
+      else {
+        result = csIsrTaskId;
+      }
+    }
+    else {
+      TaskHandle_t taskHandle = xTaskGetCurrentTaskHandle();
+      auto end = sTaskHandleIds.begin() + sPreviousTaskId;
+      auto found = std::find_if(sTaskHandleIds.begin(), end, [taskHandle](auto item &aItem){
+        return item.mHandle == taskHandle;
+      });
+      if(found != end) {
+        result = found->mId;
+      }
+      else {
+        result = csInvalidTaskId;
+      }
+    }
+    return result;
+  }
+
+  static TaskId registerCurrentTask(char const * const aTaskName) {
+    xSemaphoreTake(sRegistrationMutex, csRegistrationMutexTimeout);
+    TaskId result;
+    if(sPreviousTaskId < csMaxTaskCount){
+      TaskHandle_t taskHandle = xTaskGetCurrentTaskHandle();
+      auto end = sTaskHandleIds.begin() + sPreviousTaskId;
+      auto found = std::find_if(sTaskHandleIds.begin(), end, [taskHandle](auto item &aItem){
+        return item.mHandle == taskHandle;
+      });
+      if(found != end) {
+        result = found->mId;
+      }
+      else {
+        end->mId = ++sPreviousTaskId;
+        end->mHandle = taskHandle;
+      }
+    }
+    else {
+      result = csInvalidTaskId;
+    }
+    xSemaphoreGive(sRegistrationMutex);
+    return result;
+  }
+
+  static TaskId unregisterCurrentTask() { // We assume everything runs forever.
+  }
+
+  // Application can trick supplied task IDs to make this function return a dangling pointer if concurrent task unregistration
+  // occurs. Normal usage should be however safe.
+  static char const * getTaskName(TaskId const aTaskId) noexcept {
+    char *result;
+    if(isInterrupt()) {
+      result = csIsrTaskName;
+    }
+    else {
+      auto end = sTaskHandleIds.begin() + sPreviousTaskId;
+      auto found = std::find_if(sTaskHandleIds.begin(), end, [aTaskId](auto item &aItem){
+        return item.mId == aTaskId;
+      });
+      if(found != end) {
+        result = pcGetTaskName(found->mHandle);
+      }
+      else {
+        result = csUnknownTaskName;
+      }
+    }
+    return result;
+  }
+
+  static LogTime getLogTime() noexcept {
+    return portTICK_PERIOD_MS * rtosTickToMs(xTaskGetTickCount());
+  }
+
+  static void finish() noexcept { // We assume everything runs forever.
+  }
+
+  static void waitForFinished() noexcept { // We assume everything runs forever.
+  }
+
+  static void lock() noexcept { // Now don't care.
+  }
+
+  static void unlock() noexcept { // Now don't care.
+  }
+
+  static void error(Exception const aError) {
+	  while(true) {
+	  }
+  }
+
+  static void fatalError(Exception const aError) {
+	  while(true) {
+	  }
+  }
+
+  template<typename tClass, typename ...tParameters>
+  static tClass* _new(tParameters... aParameters) {
+    return ::new tClass(aParameters...);
+  }
+
+  template<typename tClass>
+  static tClass* _newArray(uint32_t const aCount) {
+    return ::new tClass[aCount];
+  }
+
+  template<typename tClass>
+  static void _delete(tClass* aPointer) {
+    ::delete aPointer;
+  }
+
+  template<typename tClass>
+  static void _deleteArray(tClass* aPointer) {
+    ::delete[] aPointer;
+  }
+
+private:
+  inline bool isInterrupt() noexcept {
+    return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
+  }
+
+};
+
+}
+
+inline void *operator new(size_t size) {
+  return pvPortMalloc(size);
+}
+
+inline void operator delete(void *p) noexcept {
+  vPortFree( p );
+}
+
+inline void *operator new[](size_t size) {
+  return pvPortMalloc(size);
+}
+
+inline void operator delete[](void *p) noexcept {
+  vPortFree( p );
+}
+
+
+#endif

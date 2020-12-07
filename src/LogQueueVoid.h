@@ -22,13 +22,15 @@ public:
   static void done() {  // nothing to do
   }
 
-  static bool empty() noexcept { // nothing to do
+  static bool empty() noexcept {
+    return true;
   }
 
   static void push(tMessage const) noexcept { // nothing to do
   }
 
   static bool pop(tMessage &, LogTime const) noexcept { // nothing to do
+    return false;
   }
 };
 

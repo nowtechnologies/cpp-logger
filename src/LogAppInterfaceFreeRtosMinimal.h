@@ -13,13 +13,11 @@
 #include "semphr.h"
 #include "stm32f1xx_hal.h"
 
-inline extern "C" void logTransmitterTask(void* aFunction) {
-  std::invoke(*static_cast<std::function<void(void)>*>(aFunction));
-}
+extern "C" void logTransmitterTask(void* aFunction);
 
 namespace nowtech::log {
 
-template<LogTopic tMaxTaskCount, bool tLogFromIsr>
+template<LogTopic tMaxTaskCount, bool tLogFromIsr, size_t tTaskShutdownSleepPeriod>
 class AppInterfaceFreeRtosMinimal final {
 public:
   using LogTime = uint32_t;
@@ -56,10 +54,10 @@ private:
     TaskHandle_t mHandle;
     TaskId       mId;
 
-    TaskNameId() : mHandle(0u), mId(0u) {
+    TaskHandleId() : mHandle(0u), mId(0u) {
     }
 
-    TaskNameId(TaskHandle_t const aHandle, TaskId const aId) : mHandle(aHandle), mId(aId) {
+    TaskHandleId(TaskHandle_t const aHandle, TaskId const aId) : mHandle(aHandle), mId(aId) {
     }
   };
 
@@ -97,8 +95,8 @@ public:
     else {
       TaskHandle_t taskHandle = xTaskGetCurrentTaskHandle();
       auto end = sTaskHandleIds.begin() + sPreviousTaskId;
-      auto found = std::find_if(sTaskHandleIds.begin(), end, [taskHandle](auto item &aItem){
-        return item.mHandle == taskHandle;
+      auto found = std::find_if(sTaskHandleIds.begin(), end, [taskHandle](auto &aItem){
+        return aItem.mHandle == taskHandle;
       });
       if(found != end) {
         result = found->mId;
@@ -110,14 +108,14 @@ public:
     return result;
   }
 
-  static TaskId registerCurrentTask(char const * const aTaskName) {
+  static TaskId registerCurrentTask(char const * const) {
     xSemaphoreTake(sRegistrationMutex, csRegistrationMutexTimeout);
     TaskId result;
     if(sPreviousTaskId < csMaxTaskCount){
       TaskHandle_t taskHandle = xTaskGetCurrentTaskHandle();
       auto end = sTaskHandleIds.begin() + sPreviousTaskId;
-      auto found = std::find_if(sTaskHandleIds.begin(), end, [taskHandle](auto item &aItem){
-        return item.mHandle == taskHandle;
+      auto found = std::find_if(sTaskHandleIds.begin(), end, [taskHandle](auto &aItem){
+        return aItem.mHandle == taskHandle;
       });
       if(found != end) {
         result = found->mId;
@@ -135,22 +133,23 @@ public:
   }
 
   static TaskId unregisterCurrentTask() { // We assume everything runs forever.
+    return csInvalidTaskId;
   }
 
   // Application can trick supplied task IDs to make this function return a dangling pointer if concurrent task unregistration
   // occurs. Normal usage should be however safe.
   static char const * getTaskName(TaskId const aTaskId) noexcept {
-    char *result;
+    char const * result;
     if(isInterrupt()) {
       result = csIsrTaskName;
     }
     else {
       auto end = sTaskHandleIds.begin() + sPreviousTaskId;
-      auto found = std::find_if(sTaskHandleIds.begin(), end, [aTaskId](auto item &aItem){
-        return item.mId == aTaskId;
+      auto found = std::find_if(sTaskHandleIds.begin(), end, [aTaskId](auto &aItem){
+        return aItem.mId == aTaskId;
       });
       if(found != end) {
-        result = pcGetTaskName(found->mHandle);
+        result = pcTaskGetName(found->mHandle);
       }
       else {
         result = csUnknownTaskName;
@@ -160,7 +159,7 @@ public:
   }
 
   static LogTime getLogTime() noexcept {
-    return portTICK_PERIOD_MS * rtosTickToMs(xTaskGetTickCount());
+    return portTICK_PERIOD_MS * xTaskGetTickCount();
   }
 
   static void finish() noexcept { // We assume everything runs forever.
@@ -168,6 +167,11 @@ public:
 
   static void waitForFinished() noexcept { // We assume everything runs forever.
   }
+
+  static void sleepWhileWaitingForTaskShutdown() noexcept {
+    vTaskDelay(tTaskShutdownSleepPeriod / portTICK_PERIOD_MS);
+  }
+
 
   static void lock() noexcept { // Now don't care.
   }
@@ -180,7 +184,7 @@ public:
 	  }
   }
 
-  static void fatalError(Exception const aError) {
+  static void fatalError(Exception const) {
 	  while(true) {
 	  }
   }
@@ -206,7 +210,7 @@ public:
   }
 
 private:
-  inline bool isInterrupt() noexcept {
+  static bool isInterrupt() noexcept {
     return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
   }
 
@@ -218,16 +222,24 @@ inline void *operator new(size_t size) {
   return pvPortMalloc(size);
 }
 
-inline void operator delete(void *p) noexcept {
-  vPortFree( p );
+inline void operator delete(void *aPointer) noexcept {
+  vPortFree(aPointer);
+}
+
+inline void operator delete(void *aPointer, size_t) noexcept {
+  vPortFree(aPointer);
 }
 
 inline void *operator new[](size_t size) {
   return pvPortMalloc(size);
 }
 
-inline void operator delete[](void *p) noexcept {
-  vPortFree( p );
+inline void operator delete[](void *aPointer) noexcept {
+  vPortFree(aPointer);
+}
+
+inline void operator delete[](void *aPointer, size_t) noexcept {
+  vPortFree(aPointer);
 }
 
 

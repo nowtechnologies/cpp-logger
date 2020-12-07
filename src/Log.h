@@ -199,23 +199,11 @@ private:
       return *this;
     }
 
-    template<>
-    LogShiftChainHelperBackgroundSend& operator<<<char *>(char * aValue) noexcept {
+    LogShiftChainHelperBackgroundSend& operator<<(char * const aValue) noexcept {
       return sendCharPointer(aValue);
     }
 
-    template<>
-    LogShiftChainHelperBackgroundSend& operator<<<char const *>(char const * aValue) noexcept {
-      return sendCharPointer(aValue);
-    }
-
-    template<>
-    LogShiftChainHelperBackgroundSend& operator<<<char * const>(char * const aValue) noexcept {
-      return sendCharPointer(aValue);
-    }
-
-    template<>
-    LogShiftChainHelperBackgroundSend& operator<<<char const * const>(char const * const aValue) noexcept {
+    LogShiftChainHelperBackgroundSend& operator<<(char const * const aValue) noexcept {
       return sendCharPointer(aValue);
     }
 

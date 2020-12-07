@@ -22,17 +22,17 @@ public:
   static constexpr bool csVoid = false;
 
 private:
-  inline static UART_HandleTypeDef* sSerialDescriptor = nullptr;
-  inline static ConversionResult *sTransmitBuffer;
-  inline static Iterator          sBegin;
-  inline static Iterator          sEnd;
-  inline static uint32_t          csTimeout = 100u;
+  inline static UART_HandleTypeDef *sSerialDescriptor = nullptr;
+  inline static ConversionResult   *sTransmitBuffer;
+  inline static Iterator            sBegin;
+  inline static Iterator            sEnd;
+  inline static uint32_t            csTimeout = 100u;
 
   SenderStmHalMinimal() = delete;
 
 public:
-  static void init(UART_HandleTypeDef * const aStream) {
-    sStream = aStream;
+  static void init(UART_HandleTypeDef * const aUart) {
+    sSerialDescriptor = aUart;
     sTransmitBuffer = tAppInterface::template _newArray<ConversionResult>(tTransmitBufferSize);
     sBegin = sTransmitBuffer;
     sEnd = sTransmitBuffer + tTransmitBufferSize;
@@ -42,14 +42,10 @@ public:
   }
 
   static void send(char const * const aBegin, char const * const aEnd) {
-    try {
-      if(sSerialDescriptor != nullptr) {
-        HAL_UART_Transmit(sSerialDescriptor, reinterpret_cast<uint8_t*>(const_cast<char*>(aBegin)), aEnd - aBegin, csTimeout);
-      }
-      else { // nothing to do
-      }
-    } catch(...) {
-      tAppInterface::error(Exception::cSenderError);
+    if(sSerialDescriptor != nullptr) {
+      HAL_UART_Transmit(sSerialDescriptor, reinterpret_cast<uint8_t*>(const_cast<char*>(aBegin)), aEnd - aBegin, csTimeout);
+    }
+    else { // nothing to do
     }
   }
 

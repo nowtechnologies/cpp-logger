@@ -50,21 +50,10 @@ private:
   inline static constexpr char csTransmitterTaskName[] = "logTx";
   inline static constexpr TickType_t csRegistrationMutexTimeout = portMAX_DELAY;
 
-  struct TaskHandleId {
-    TaskHandle_t mHandle;
-    TaskId       mId;
-
-    TaskHandleId() : mHandle(0u), mId(0u) {
-    }
-
-    TaskHandleId(TaskHandle_t const aHandle, TaskId const aId) : mHandle(aHandle), mId(aId) {
-    }
-  };
-
-  inline static std::array<TaskHandleId, csMaxTaskCount> sTaskHandleIds;
+  inline static std::array<TaskHandle_t, csMaxTaskCount> sTaskHandles;
   inline static TaskId sPreviousTaskId = csFirstNormalTaskId - 1u;
   inline static SemaphoreHandle_t sRegistrationMutex;
-  inline static TaskHandle_t &sTransmitterTask;
+  inline static TaskHandle_t sTransmitterTask;
   
   AppInterfaceFreeRtosMinimal() = delete;
 
@@ -94,12 +83,10 @@ public:
     }
     else {
       TaskHandle_t taskHandle = xTaskGetCurrentTaskHandle();
-      auto end = sTaskHandleIds.begin() + sPreviousTaskId;
-      auto found = std::find_if(sTaskHandleIds.begin(), end, [taskHandle](auto &aItem){
-        return aItem.mHandle == taskHandle;
-      });
+      auto end = sTaskHandles.begin() + sPreviousTaskId;
+      auto found = std::find(sTaskHandles.begin(), end, taskHandle);
       if(found != end) {
-        result = found->mId;
+        result = found - sTaskHandles.begin() + csFirstNormalTaskId - csIsrTaskId;
       }
       else {
         result = csInvalidTaskId;
@@ -113,16 +100,14 @@ public:
     TaskId result;
     if(sPreviousTaskId < csMaxTaskCount){
       TaskHandle_t taskHandle = xTaskGetCurrentTaskHandle();
-      auto end = sTaskHandleIds.begin() + sPreviousTaskId;
-      auto found = std::find_if(sTaskHandleIds.begin(), end, [taskHandle](auto &aItem){
-        return aItem.mHandle == taskHandle;
-      });
+      auto end = sTaskHandles.begin() + sPreviousTaskId;
+      auto found = std::find(sTaskHandles.begin(), end, taskHandle);
       if(found != end) {
-        result = found->mId;
+        result = found - sTaskHandles.begin() + csFirstNormalTaskId - csIsrTaskId;
       }
       else {
-        end->mId = ++sPreviousTaskId;
-        end->mHandle = taskHandle;
+        result = ++sPreviousTaskId;
+        *end = taskHandle;
       }
     }
     else {
@@ -144,12 +129,8 @@ public:
       result = csIsrTaskName;
     }
     else {
-      auto end = sTaskHandleIds.begin() + sPreviousTaskId;
-      auto found = std::find_if(sTaskHandleIds.begin(), end, [aTaskId](auto &aItem){
-        return aItem.mId == aTaskId;
-      });
-      if(found != end) {
-        result = pcTaskGetName(found->mHandle);
+      if(aTaskId <= sPreviousTaskId) {
+        result = pcTaskGetName(sTaskHandles[aTaskId - csFirstNormalTaskId + csIsrTaskId]);
       }
       else {
         result = csUnknownTaskName;

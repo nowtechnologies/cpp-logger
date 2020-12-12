@@ -7,7 +7,6 @@
 
 #include "Log.h"
 #include <array>
-#include <functional>
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
@@ -62,9 +61,9 @@ public:
     sRegistrationMutex = xSemaphoreCreateMutex();
   }
 
-  static void init(std::function<void(void)> aFunction, uint32_t const aStackDepth, uint32_t const aPriority) {
+  static void init(void (*aFunction)(), uint32_t const aStackDepth, uint32_t const aPriority) {
     init();
-    xTaskCreate(logTransmitterTask, csTransmitterTaskName, aStackDepth, &aFunction, aPriority, &sTransmitterTask);
+    xTaskCreate(logTransmitterTask, csTransmitterTaskName, aStackDepth, reinterpret_cast<void*>(aFunction), aPriority, &sTransmitterTask);
   }
 
   static void done() { // We assume it runs forever.

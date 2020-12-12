@@ -58,7 +58,7 @@ constexpr uint32_t cgLogTaskPriority = tskIDLE_PRIORITY + 1u;
 using LogAppInterfaceFreeRtosMinimal = nowtech::log::AppInterfaceFreeRtosMinimal<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterfaceFreeRtosMinimal::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterfaceFreeRtosMinimal::LogTime cgRefreshPeriod = 444;
-using LogMessage = nowtech::log::MessageVariant<cgPayloadSize>;
+using LogMessage = nowtech::log::MessageCompact<cgPayloadSize>;
 using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
 using LogSenderStmHalMinimal = nowtech::log::SenderStmHalMinimal<LogAppInterfaceFreeRtosMinimal, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogQueueVoid = nowtech::log::QueueFreeRtos<LogMessage, LogAppInterfaceFreeRtosMinimal, cgQueueSize>;
@@ -140,6 +140,12 @@ extern "C" void myDefaultTask() {
 
   while(true) {
     Log::n() << "end" << Log::end;
+    step();
+  }
+}
+
+extern "C" void vApplicationMallocFailedHook(void) {
+  while(true) {
     step();
   }
 }

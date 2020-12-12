@@ -41,7 +41,7 @@ constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
 
 
-constexpr size_t cgDirectBufferSize = 43u;
+/*constexpr size_t cgDirectBufferSize = 43u;
 using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterfaceStd::LogTime cgRefreshPeriod = 444;
@@ -50,7 +50,7 @@ using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgA
 using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogQueueVoid = nowtech::log::QueueVoid<LogMessage, LogAppInterfaceStd, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueueVoid, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
-/*
+
    text	   data	    bss	    dec	    hex	filename
   17839	   1122	    592	  19553	   4c61	test-sizes
 */
@@ -74,7 +74,7 @@ using Log = nowtech::log::Log<LogQueueVoid, LogSenderVoid, cgMaxTopicCount, cgTa
    3299	    818	     32	   4149	   1035	test-sizes
  */
 
-/*
+
 constexpr size_t cgDirectBufferSize = 0u;
 using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
@@ -84,6 +84,7 @@ using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgA
 using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogQueueStdBoost = nowtech::log::QueueStdBoost<LogMessage, LogAppInterfaceStd, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueueStdBoost, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
+/*
    text	   data	    bss	    dec	    hex	filename
   28411	   1306	    992	  30709	   77f5	test-sizes
   */

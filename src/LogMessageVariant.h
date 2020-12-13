@@ -12,17 +12,26 @@
 namespace nowtech::log {
 
 // Will be copied using operator=
-template<size_t tPayloadSize>
-class MessageVariant final : public MessageBase<tPayloadSize> {
+template<size_t tPayloadSize, bool tSupportFloatingPoint>
+class MessageVariant final : public MessageBase<tPayloadSize, tSupportFloatingPoint> {
 public:
   static constexpr size_t csPayloadSize = tPayloadSize;
+  static constexpr bool   csSupportFloatingPoint = tSupportFloatingPoint;
 
 private:
-  using Payload32 = std::variant<ShutdownMessageContent, bool, float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char, char const*, std::array<char, csPayloadSize>>;
-  using Payload64 = std::variant<ShutdownMessageContent, bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
-  using Payload80 = std::variant<ShutdownMessageContent, bool, float, double, long double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
-  using Payload = std::conditional_t<tPayloadSize < sizeof(int64_t) && sizeof(char*) == sizeof(int32_t), Payload32,
-                  std::conditional_t<tPayloadSize < sizeof(long double), Payload64, Payload80>>;
+  static constexpr MessageSequence csTerminal     = MessageBase<tPayloadSize, tSupportFloatingPoint>::csTerminal;
+
+  using PayloadFloat32 = std::variant<ShutdownMessageContent, bool, float, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char, char const*, std::array<char, csPayloadSize>>;
+  using PayloadFloat64 = std::variant<ShutdownMessageContent, bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
+  using PayloadFloat80 = std::variant<ShutdownMessageContent, bool, float, double, long double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
+  using PayloadFloat = std::conditional_t<tPayloadSize < sizeof(int64_t) && sizeof(char*) == sizeof(int32_t), PayloadFloat32,
+                  std::conditional_t<tPayloadSize < sizeof(long double), PayloadFloat64, PayloadFloat80>>;
+  using PayloadNoFloat32 = std::variant<ShutdownMessageContent, bool, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, char, char const*, std::array<char, csPayloadSize>>;
+  using PayloadNoFloat64 = std::variant<ShutdownMessageContent, bool, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
+  using PayloadNoFloat80 = std::variant<ShutdownMessageContent, bool, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t, char, char const*, std::array<char, csPayloadSize>>;
+  using PayloadNoFloat = std::conditional_t<tPayloadSize < sizeof(int64_t) && sizeof(char*) == sizeof(int32_t), PayloadNoFloat32,
+                  std::conditional_t<tPayloadSize < sizeof(long double), PayloadNoFloat64, PayloadNoFloat80>>;
+  using Payload = std::conditional_t<tSupportFloatingPoint, PayloadFloat, PayloadNoFloat>;
   static_assert(std::is_trivially_copyable_v<Payload>);
   // TODO concept on payload size and long double -- see it when 8 in main
 
@@ -62,7 +71,7 @@ public:
   }
 
   bool isTerminal() const noexcept {
-    return mMessageSequence == MessageBase<tPayloadSize>::csTerminal;
+    return mMessageSequence == csTerminal;
   }
 
   uint8_t getBase() const noexcept {

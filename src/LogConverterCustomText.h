@@ -14,6 +14,7 @@ public:
   using ConversionResult = char;
   using Iterator         = char*;
   static constexpr Iterator csNullIterator = nullptr; // Used in SenderVoid to return void begin-end pair.
+  static constexpr bool     csSupportFloatingPoint = tMessage::csSupportFloatingPoint;
 
 private:
   using IntegerConversionUnsigned = std::conditional_t<tArchitecture64, uint64_t, uint32_t>;
@@ -61,17 +62,20 @@ public:
   void convert(ShutdownMessageContent const, uint8_t const, uint8_t const) noexcept { // nothing to do
   }
 
-  void convert(float const aValue, uint8_t const, uint8_t const aFill) noexcept {
+  template <typename tDummy = void>
+  auto convert(float const aValue, uint8_t const, uint8_t const aFill) noexcept -> std::enable_if_t<csSupportFloatingPoint, tDummy> {
     append(static_cast<long double>(aValue), aFill == 0u ? csMaxDigitCountFloat : aFill);
     appendSpace();
   }
 
-  void convert(double const aValue, uint8_t const, uint8_t const aFill) noexcept {
+  template <typename tDummy = void>
+  auto convert(double const aValue, uint8_t const, uint8_t const aFill) noexcept -> std::enable_if_t<csSupportFloatingPoint, tDummy> {
     append(static_cast<long double>(aValue), aFill == 0u ? csMaxDigitCountDouble : aFill);
     appendSpace();
   }
 
-  void convert(long double const aValue, uint8_t const, uint8_t const aFill) noexcept {
+  template <typename tDummy = void>
+  auto convert(long double const aValue, uint8_t const, uint8_t const aFill) noexcept -> std::enable_if_t<csSupportFloatingPoint, tDummy> {
     append(aValue, aFill == 0u ? csMaxDigitCountLongDouble : aFill);
     appendSpace();
   }

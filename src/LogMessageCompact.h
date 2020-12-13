@@ -9,16 +9,18 @@
 namespace nowtech::log {
 
 // Will be copied via taking the data pointer. Here we go for size.
-template<size_t tPayloadSize>
-class MessageCompact final : public MessageBase<tPayloadSize> {
+template<size_t tPayloadSize, bool tSupportFloatingPoint>
+class MessageCompact final : public MessageBase<tPayloadSize, tSupportFloatingPoint> {
 public:
   static constexpr size_t csPayloadSize = tPayloadSize + sizeof(uint8_t); // Antipattern to use the base field for storage, but we go for space saving.
+  static constexpr bool   csSupportFloatingPoint = tSupportFloatingPoint;
 
 private:
   enum class Type : uint8_t {
     cInvalid, cShutdown, cBool, cFloat, cDouble, cLongDouble, cUint8_t, cUint16_t, cUint32_t, cUint64_t, cInt8_t, cInt16_t, cInt32_t, cInt64_t, cChar, cCharArray, cStoredChars
   };
 
+  static constexpr MessageSequence csTerminal     = MessageBase<tPayloadSize, tSupportFloatingPoint>::csTerminal;
   static constexpr size_t csTotalSize             = tPayloadSize + 2 * sizeof(uint8_t) + sizeof(TaskId) + sizeof(MessageSequence) + sizeof(Type);
   static constexpr size_t csOffsetPayload         = 0u;
   static constexpr size_t csOffsetBase            = csOffsetPayload + tPayloadSize;
@@ -62,12 +64,7 @@ public:
     uint8_t base = mData[csOffsetBase];
     uint8_t fill = mData[csOffsetFill];
 
-    if(type == Type::cFloat) {
-      float value;
-      std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
-      aConverter.convert(value, base, fill);
-    }
-    else if(type == Type::cBool) {
+    if(type == Type::cBool) {
       bool value;
       std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
       aConverter.convert(value, base, fill);
@@ -115,12 +112,51 @@ public:
     }
     else {
       if constexpr(csPayloadSize >= sizeof(int64_t) || sizeof(char*) > sizeof(int32_t)) {
-        output64<tConverter>(aConverter, base, fill);
+        if(type == Type::cUint64_t) {
+          uint64_t value;
+          std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
+          aConverter.convert(value, base, fill);
+        }
+        else if(type == Type::cInt64_t) {
+          int64_t value;
+          std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
+          aConverter.convert(value, base, fill);
+        }
+        else { // nothing to do
+        }
       }
       else { // nothing to do
       }
-      if constexpr(csPayloadSize >= sizeof(long double)) {
-        output80<tConverter>(aConverter, base, fill);
+      if constexpr(tSupportFloatingPoint) {
+        if(type == Type::cFloat) {
+          float value;
+          std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
+          aConverter.convert(value, base, fill);
+        }
+        else { // nothing to do
+        }
+        if constexpr(csPayloadSize >= sizeof(double)) {
+          if(type == Type::cDouble) {
+            double value;
+            std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
+            aConverter.convert(value, base, fill);
+          }
+          else { // nothing to do
+          }
+          if constexpr(csPayloadSize >= sizeof(long double)) {
+            if(type == Type::cLongDouble) {
+              long double value;
+              std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
+              aConverter.convert(value, base, fill);
+            }
+            else { // nothing to do
+            }
+          }
+          else { // nothing to do
+          }
+        }
+        else { // nothing to do
+        }
       }
       else { // nothing to do
       }
@@ -132,7 +168,7 @@ public:
   }
 
   bool isTerminal() const noexcept {
-    return mData[csOffsetMessageSequence] == MessageBase<tPayloadSize>::csTerminal;
+    return mData[csOffsetMessageSequence] == csTerminal;
   }
 
   uint8_t getBase() const noexcept {
@@ -169,40 +205,6 @@ private:
   static Type getType(char * const) noexcept { return Type::cCharArray; }
   static Type getType(char const * const) noexcept { return Type::cCharArray; }
   static Type getType(std::array<char, csPayloadSize> const) noexcept { return Type::cStoredChars; }
-
-  template<typename tConverter>
-  void output64(tConverter& aConverter, uint8_t const aBase, uint8_t const aFill) const noexcept {
-    Type type = static_cast<Type>(mData[csOffsetType]);
-    if(type == Type::cDouble) {
-      double value;
-      std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
-      aConverter.convert(value, aBase, aFill);
-    }
-    else if(type == Type::cUint64_t) {
-      uint64_t value;
-      std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
-      aConverter.convert(value, aBase, aFill);
-    }
-    else if(type == Type::cInt64_t) {
-      int64_t value;
-      std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
-      aConverter.convert(value, aBase, aFill);
-    }
-    else { // nothing to do
-    }
-  }
-
-  template<typename tConverter>
-  void output80(tConverter& aConverter, uint8_t const aBase, uint8_t const aFill) const noexcept {
-    Type type = static_cast<Type>(mData[csOffsetType]);
-    if(type == Type::cLongDouble) {
-      long double value;
-      std::memcpy(&value, mData + csOffsetPayload, sizeof(value));
-      aConverter.convert(value, aBase, aFill);
-    }
-    else { // nothing to do
-    }
-  }
 };
 
 }

@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 include_directories(cpp-memory-manager)
 include_directories(src)
 
-add_compile_options(-ggdb -Wall -Wextra -Wpedantic)
+add_compile_options(-Os -Wall -Wextra -Wpedantic)
 add_link_options(-lpthread)
 
 add_executable(cpp_logger
@@ -22,4 +22,4 @@ add_executable(cpp_logger
         src/LogQueueVoid.h
         src/LogSenderStdOstream.h
         src/LogSenderVoid.h
-        test/test-stdthreadostream.cpp)
+        test/test-sizes-stdthreadostream.cpp)

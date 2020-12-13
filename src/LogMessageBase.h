@@ -34,15 +34,15 @@ enum class ShutdownMessageContent : uint8_t {
   csSomething
 };
 
-template<std::size_t tPayloadSize>
+template<std::size_t tPayloadSize, bool tSupportFloatingPoint>
 class MessageBase {
 public:
   static constexpr MessageSequence csTerminal = 0u;
 
 protected:
-  static_assert(sizeof(float) <= tPayloadSize);
+  static_assert(!tSupportFloatingPoint || sizeof(float) <= tPayloadSize);
   static_assert(sizeof(int32_t) <= tPayloadSize);
-  static_assert(sizeof(double) <= sizeof(int64_t));
+  static_assert(!tSupportFloatingPoint || sizeof(double) <= sizeof(int64_t));
   static_assert(sizeof(char*) <= tPayloadSize);
   static_assert(sizeof(LogFormat) == sizeof(int16_t));
 };

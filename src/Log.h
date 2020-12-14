@@ -508,7 +508,7 @@ public:
     }
   }
 
-  static auto i() noexcept {
+  static LogShiftChainHelper i() noexcept {
     if constexpr(!csShutdownLog) {
       TaskId const taskId = tAppInterface::getCurrentTaskId();
       return sendHeader(taskId);
@@ -600,6 +600,11 @@ public:
     else {
       return LogShiftChainHelper{csInvalidTaskId};
     }
+  }
+
+  template<typename ...tArgs>       // Not a sophisticated solution, but why offer the possibility?
+  static void f(LogShiftChainHelper aHead, tArgs &&... aArgs) noexcept {
+    (aHead << ... << aArgs) << end;
   }
 
 private:

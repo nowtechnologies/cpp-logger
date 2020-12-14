@@ -47,7 +47,7 @@ constexpr uint8_t cgAppendStackBufferSize = 100u;
 constexpr bool cgAppendBasePrefix = true;
 constexpr bool cgAlignSigned = false;
 constexpr size_t cgTransmitBufferSize = 123u;
-constexpr size_t cgPayloadSize = 8u;
+constexpr size_t cgPayloadSize = 6u;            // This disables 64-bit arithmetics.
 constexpr bool cgSupportFloatingPoint = true;
 constexpr size_t cgQueueSize = 111u;
 constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
@@ -55,7 +55,7 @@ constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::
 constexpr uint32_t cgLogTaskStackSize = 256u;
 constexpr uint32_t cgLogTaskPriority = tskIDLE_PRIORITY + 1u;
 
-constexpr size_t cgDirectBufferSize = 43u;
+/*constexpr size_t cgDirectBufferSize = 43u;
 using LogAppInterfaceFreeRtosMinimal = nowtech::log::AppInterfaceFreeRtosMinimal<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterfaceFreeRtosMinimal::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterfaceFreeRtosMinimal::LogTime cgRefreshPeriod = 444;
@@ -64,13 +64,13 @@ using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgA
 using LogSender = nowtech::log::SenderStmHalMinimal<LogAppInterfaceFreeRtosMinimal, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogQueue = nowtech::log::QueueVoid<LogMessage, LogAppInterfaceFreeRtosMinimal, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueue, LogSender, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
-/* text    data     bss     dec     hex filename
-  23588     132   19080   42800    a730 cpp-logger-embedded.elf
+   text    data     bss     dec     hex filename
+  22260     132   19068   41460    a1f4 cpp-logger-embedded.elf
  */
 
 /* No log call present at all, not even cout.write, only thread creation:
    text    data     bss     dec     hex filename
-   8996       24   19016   28036    6d84 cpp-logger-embedded.elf
+   9108      24   19016   28148    6df4 cpp-logger-embedded.elff
 */
 
 /*constexpr size_t cgDirectBufferSize = 43u;
@@ -83,7 +83,7 @@ using LogSender = nowtech::log::SenderVoid<LogAppInterfaceFreeRtosMinimal, LogCo
 using LogQueue = nowtech::log::QueueVoid<LogMessage, LogAppInterfaceFreeRtosMinimal, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueue, LogSender, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
    text    data     bss     dec     hex filename
-   8996       24   19016   28036    6d84 cpp-logger-embedded.elf
+   9108      24   19016   28148    6df4 cpp-logger-embedded.elf
  */
 
 /*constexpr size_t cgDirectBufferSize = 0u;
@@ -96,10 +96,10 @@ using LogSender = nowtech::log::SenderStmHalMinimal<LogAppInterfaceFreeRtosMinim
 using LogQueue = nowtech::log::QueueFreeRtos<LogMessage, LogAppInterfaceFreeRtosMinimal, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueue, LogSender, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
     text    data     bss     dec     hex filename
-    26076     136   19104   45316    b104 cpp-logger-embedded.elf
+   24412     136   19092   43640    aa78 cpp-logger-embedded.elf
 */
 
-/*constexpr size_t cgDirectBufferSize = 0u;
+constexpr size_t cgDirectBufferSize = 0u;
 using LogAppInterfaceFreeRtosMinimal = nowtech::log::AppInterfaceFreeRtosMinimal<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterfaceFreeRtosMinimal::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterfaceFreeRtosMinimal::LogTime cgRefreshPeriod = 444;
@@ -108,8 +108,8 @@ using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgA
 using LogSender = nowtech::log::SenderStmHalMinimal<LogAppInterfaceFreeRtosMinimal, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogQueue = nowtech::log::QueueFreeRtos<LogMessage, LogAppInterfaceFreeRtosMinimal, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueue, LogSender, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
-   text    data     bss     dec     hex filename
-  25740     136   19104   44980    afb4 cpp-logger-embedded.elf
+/*   text    data     bss     dec     hex filename
+   24132     136   19092   43360    a960 cpp-logger-embedded.elf
  */
 
 void step() {
@@ -117,8 +117,8 @@ void step() {
   vTaskDelay(133);
 }
 
-uint64_t cgUint32;
-int64_t cgInt32;
+uint32_t cgUint32;
+int32_t cgInt32;
 char constexpr cgString[] = "string\n";
 
 extern "C" void myDefaultTask() {
@@ -129,6 +129,7 @@ extern "C" void myDefaultTask() {
   }
   else { // nothing to do
   }
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, real > 0.0 ? GPIO_PIN_SET : GPIO_PIN_RESET);
   nowtech::log::LogConfig logConfig;
   logConfig.allowRegistrationLog = true;
   LogSender::init(&huart1);

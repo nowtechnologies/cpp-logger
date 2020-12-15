@@ -3,11 +3,9 @@
 
 #include "Log.h"
 #include <ios>
-#include <array>
 #include <mutex>
 #include <chrono>
 #include <thread>
-#include <unordered_map>
 #include <unordered_set>
 #include <condition_variable>
 
@@ -21,6 +19,7 @@ public:
   static constexpr TaskId csInvalidTaskId     = std::numeric_limits<TaskId>::max();
   static constexpr TaskId csIsrTaskId         = std::numeric_limits<TaskId>::min();
   static constexpr TaskId csFirstNormalTaskId = csIsrTaskId + 1u;
+  static constexpr bool   csConstantTaskNames = false;
 
   class Occupier final {
   public:
@@ -73,19 +72,8 @@ private:
   inline static constexpr size_t csTaskId2threadsSize = csMaxTaskCount + 1u;
   inline static const std::thread::id csNoThreadId;
 
-  struct TaskNameId {
-    std::string mName;
-    uint32_t    mId;
-
-    TaskNameId() : mId(0u) {
-    }
-
-    TaskNameId(std::string &&aName, uint32_t const aId) : mName(std::move(aName)), mId(aId) {
-    }
-  };
-
-  inline static std::unordered_map<std::thread::id, TaskNameId> sThreadId2taskNamesIds;
-  inline static std::array<std::thread::id, csTaskId2threadsSize> sTaskId2threads;
+  inline static thread_local TaskId shTaskId = csInvalidTaskId;
+  inline static thread_local std::string shTaskName;
   inline static std::unordered_set<TaskId> sFreeTaskIds;
   inline static std::mutex sRegistrationMutex;
   inline static std::thread *sTransmitterThread;
@@ -111,22 +99,12 @@ public:
     }
     else { // nothing to do
     }
-    sThreadId2taskNamesIds.clear();
     sFreeTaskIds.clear();
   }
 
   /// We assume it won't get called during registering.
-  static TaskId getCurrentTaskId() noexcept { // TODO in other implementations returns 0 if ISR and it is enabled. If disabled, csInvalidTaskId.
-    auto threadId = std::this_thread::get_id();
-    TaskId result;
-    auto foundTaskNameId = sThreadId2taskNamesIds.find(threadId);
-    if(foundTaskNameId != sThreadId2taskNamesIds.end()) {
-      result = foundTaskNameId->second.mId;
-    }
-    else {
-      result = csInvalidTaskId;
-    }
-    return result;
+  static TaskId getCurrentTaskId() noexcept {
+    return shTaskId;
   }
 
   static TaskId registerCurrentTask(char const * const aTaskName) {
@@ -134,15 +112,9 @@ public:
     TaskId result;
     if(!sFreeTaskIds.empty()) {
       auto begin = sFreeTaskIds.begin();
-      result = *begin;
-      auto threadId = std::this_thread::get_id();
-      auto [iterator, inserted] = sThreadId2taskNamesIds.try_emplace(threadId, TaskNameId{std::string(aTaskName), result});
-      if(inserted) {
-        sTaskId2threads[result] = threadId;
-        sFreeTaskIds.erase(begin);
-      }
-      else { // nothing to do
-      }
+      shTaskId = result = *begin;
+      shTaskName = aTaskName;
+      sFreeTaskIds.erase(begin);
     }
     else {
       result = csInvalidTaskId;
@@ -152,38 +124,14 @@ public:
 
   static TaskId unregisterCurrentTask() {
     std::lock_guard<std::mutex> lock (sRegistrationMutex);
-    TaskId result;
-    auto found = sThreadId2taskNamesIds.find(std::this_thread::get_id());
-    if(found != sThreadId2taskNamesIds.end()) {
-      result = found->second.mId;
-      sTaskId2threads[found->second.mId] = std::thread::id{};
-      sThreadId2taskNamesIds.erase(found);
-      sFreeTaskIds.insert(result);
-    }
-    else {
-      result = csInvalidTaskId;
-    }
-    return result;
+    sFreeTaskIds.insert(shTaskId);
+    shTaskId = csInvalidTaskId;
+    return csInvalidTaskId;
   }
 
-  // Application can trick supplied task IDs to make this function return a dangling pointer if concurrent task unregistration
-  // occurs. Normal usage should be however safe.
-  static char const * getTaskName(TaskId const aTaskId) noexcept { // TODO for other implementations: if in ISR, returns "ISR"
-    auto found = sTaskId2threads[aTaskId];
-    char const * result;
-    if(found != csNoThreadId) {
-      auto foundTaskNameId = sThreadId2taskNamesIds.find(found);
-      if(foundTaskNameId != sThreadId2taskNamesIds.end()) {
-        result = foundTaskNameId->second.mName.c_str();
-      }
-      else {  // should not occur
-        result = csUnknownTaskName;  
-      }
-    }
-    else {
-      result = csUnknownTaskName;
-    }
-    return result;
+  // Caller will copy contents from returned pointer immediately.
+  static char const * getTaskName(TaskId const) noexcept {
+    return shTaskName.c_str();
   }
 
   static LogTime getLogTime() noexcept {

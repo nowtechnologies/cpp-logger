@@ -24,6 +24,7 @@ public:
   static constexpr TaskId csInvalidTaskId     = std::numeric_limits<TaskId>::max();
   static constexpr TaskId csIsrTaskId         = std::numeric_limits<TaskId>::min();
   static constexpr TaskId csFirstNormalTaskId = csIsrTaskId + 1u;
+  static constexpr bool   csConstantTaskNames = true;
 
   class Occupier final {
   public:
@@ -190,7 +191,7 @@ public:
   }
 
 private:
-  static bool isInterrupt() noexcept {
+  static bool isInterrupt() noexcept {   // Well, this is STM32-specific, but can easily be changed to other MCUs as well.
     return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
   }
 

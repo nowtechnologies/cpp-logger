@@ -128,6 +128,7 @@ private:
   static constexpr TaskId   csMaxTaskCount      = tAppInterface::csMaxTaskCount;
   static constexpr TaskId   csMaxTotalTaskCount = tAppInterface::csMaxTaskCount + 1u;
   static constexpr size_t   csListItemOverhead  = sizeof(void*) * 8u;
+  static constexpr bool     csConstantTaskNames = tAppInterface::csConstantTaskNames;
   
   static constexpr LogTopic csFirstFreeTopic    = 0;
   static constexpr MessageSequence csSequence0  = 0u;
@@ -615,7 +616,12 @@ private:
         result << sConfig->taskIdFormat << aTaskId;
       }
       else if constexpr (tTaskRepresentation == TaskRepresentation::cName) {
-        result << tAppInterface::getTaskName(aTaskId);
+        if constexpr (csConstantTaskNames) {
+          result << tAppInterface::getTaskName(aTaskId);
+        }
+        else {
+          result << LogConfig::St << tAppInterface::getTaskName(aTaskId);
+        }
       }
       else { // nothing to do
       }

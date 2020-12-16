@@ -66,7 +66,7 @@ The logger consists of six classes:
   - a more space-efficient handcrafted message.
 
 The logger can operate in two modes:
-- Without queue, when the conversion and sending happens without message instantiation and queue usage. This can be useful for single-threaded applications.
+- Direct without queue, when the conversion and sending happens without message instantiation and queue usage. This can be useful for single-threaded applications.
 - With queue, when each item sent will form one or more (in case of stored strings) message and use a central thread-safe queue. On the other end of the queue a background thread pops the messages and groups them by tasks in secondary lists. When a group of related items from a task has arrived, its conversion and sending begins.
 
 ## Implementations
@@ -79,7 +79,7 @@ This is a general implementation, but tailored for embedded requirements.
 
 In queue-less mode, conversion and sending happens immediately for each item. Thus it is desirable that the Sender has some sort of buffering inside.
 
-For the queue mode, it contains a secondary list or queue for each task, which gather the items in each logged group. After the terminal item arrives, conversion happens for each item in the sender buffer and then comes the sending.
+For the queue mode, it contains a secondary list or queue for each task, which gather the items in each logged group. After the terminal item arrives, conversion happens for each item in the sender buffer and then comes the sending. These secondary queues are backed by a pool allocator to avoid repeated dynamic memory access.
 
 ### ConverterCustomText
 
@@ -125,6 +125,46 @@ This is a minimal implementation for STM32 UART using blocking HAL transmission.
 
 It is a simple std::ostream wrapper.
 
-## Performance
+## Space requirements
 
-dfgdg
+I have investigated several scenarios using simple applications which contain practically nothing but a task creation apart of the logging. This way I could measure the net space required by the log library and its necessary supplementary functions like std::unordered_set or floating-point emulation for log10.
+
+For desktop, I used clang version 10.0.0 on x64. For embedded, I used arm-none-eabi-g++ 10.1.1 on STM32 Cortex M3. This MCU needs emulation for floating point. All measurements were conducted using -Os. I present the net growths in segments text, data and BSS for each of the following scenarios:
+- direct logging (for single threaded applications)
+- logging turned off with SenderVoid
+- logging with queue using MessageCompact (for multithreaded applications)
+- logging with queue using MessageVariant (for multithreaded applications)
+
+### FreeRTOS with floating point
+
+To obtain net results, I put some floating-point operations in the application test-sizes-freertosminimal-float.cpp because a real application would use them apart of logging. 
+
+|Scenario      |   Text|  Data|    BSS|
+|--------------|------:|-----:|------:|
+|direct        |13152  | 108  |52     |
+|off           |0      |0     |0      |
+|MessageVariant|15304  |112   | 76    |
+|MessageCompact|15024  |112   | 76    |
+
+### FreeRTOS without floating point
+
+No floating point arithmetics in the application and the support is turned off in the logger.
+
+|Scenario      |   Text|  Data|    BSS|
+|--------------|------:|-----:|------:|
+|direct        |4303   | 8    |56     |
+|off           |0      |0     |0      |
+|MessageVariant|6440   |12    | 80    |
+|MessageCompact|6192   |12    | 80    |
+
+### x86 STL with floating point
+
+Not much point to calculate size growth here, but why not?
+
+|Scenario      |   Text|  Data|    BSS|
+|--------------|------:|-----:|------:|
+|direct        |11899  | 273  |492    |
+|off           |0      |0     |0      |
+|MessageVariant|22483  | 457  |892    |
+|MessageCompact|20851  |457   | 892   |
+

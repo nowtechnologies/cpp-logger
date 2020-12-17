@@ -36,7 +36,7 @@ Copyright 2020 Balázs Bámer.
   - String literals or string constants can be transferre using their pointers to save MCU cycles.
   - More transient strings will be copied instantly.
 - Operate in a strictly typed way as opposed to the printf-based loggers some companies still use today.
-- We needed a much finer granularity than the usual log levels, so I've introduced independently selectable topics.
+- We needed a much finer granularity than the usual log levels, so I've introduced independently selectable topics. However, these allow easy simulation of traditional log levels, see in the API section.
 - Important aim was to let the user log a group of related items without other tasks interleaving the output of converting these items.
 - Possibly minimal relying on external libraries. It does not depend on numeric to string conversion functions.
 - In contrast with the original solution, the new one extensively uses templated classes to
@@ -132,12 +132,12 @@ I have investigated several scenarios using simple applications which contain pr
 For desktop, I used clang version 10.0.0 on x64. For embedded, I used arm-none-eabi-g++ 10.1.1 on STM32 Cortex M3. This MCU needs emulation for floating point. All measurements were conducted using -Os. I present the net growths in segments text, data and BSS for each of the following scenarios:
 - direct logging (for single threaded applications)
 - logging turned off with SenderVoid
-- logging with queue using MessageCompact (for multithreaded applications)
 - logging with queue using MessageVariant (for multithreaded applications)
+- logging with queue using MessageCompact (for multithreaded applications)
 
 ### FreeRTOS with floating point
 
-To obtain net results, I put some floating-point operations in the application test-sizes-freertosminimal-float.cpp because a real application would use them apart of logging. 
+To obtain net results, I put some floating-point operations in the application *test-sizes-freertosminimal-float.cpp* because a real application would use them apart of logging. 
 
 |Scenario      |   Text|  Data|    BSS|
 |--------------|------:|-----:|------:|
@@ -148,7 +148,7 @@ To obtain net results, I put some floating-point operations in the application t
 
 ### FreeRTOS without floating point
 
-No floating point arithmetics in the application and the support is turned off in the logger.
+No floating point arithmetics in the application and the support is turned off in the logger. Source is *test-sizes-freertosminimal-nofloat.cpp*
 
 |Scenario      |   Text|  Data|    BSS|
 |--------------|------:|-----:|------:|
@@ -159,7 +159,7 @@ No floating point arithmetics in the application and the support is turned off i
 
 ### x86 STL with floating point
 
-Not much point to calculate size growth here, but why not?
+Not much point to calculate size growth here, but why not? Source is *test-sizes-stdthreadostream.cpp*
 
 |Scenario      |   Text|  Data|    BSS|
 |--------------|------:|-----:|------:|
@@ -168,3 +168,17 @@ Not much point to calculate size growth here, but why not?
 |MessageVariant|22483  | 457  |892    |
 |MessageCompact|20851  |457   | 892   |
 
+## API
+
+```C++
+#ifdef LEVEL1
+Log::registerTopic(nowtech::LogTopics::level1, "level1");
+#elif LEVEL2
+Log::registerTopic(nowtech::LogTopics::level1, "level1");
+Log::registerTopic(nowtech::LogTopics::level2, "level2");
+#elif LEVEL3
+Log::registerTopic(nowtech::LogTopics::level1, "level1");
+Log::registerTopic(nowtech::LogTopics::level2, "level2");
+Log::registerTopic(nowtech::LogTopics::level3, "level3");
+#endif
+```

@@ -21,79 +21,60 @@
  * THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "LogAppInterfaceStd.h"
+#include "LogAppInterfaceFreeRtosMinimal.h"
 #include "LogConverterCustomText.h"
-#include "LogSenderStdOstream.h"
+#include "LogSenderStmHalMinimal.h"
+#include "LogSenderVoid.h"
+#include "LogQueueFreeRtos.h"
 #include "LogQueueVoid.h"
 #include "LogMessageVariant.h"
+#include "LogMessageCompact.h"
 #include "Log.h"
+#include "main.h"
 
-#include <iostream>
-#include <thread>
-
-// clang++ -std=c++20 -Isrc -Icpp-memory-manager test/test-stdostream.cpp -lpthread -o test-stdostream
-
-constexpr size_t cgThreadCount = 1;
-
-char cgThreadNames[10][10] = {
-  "thread_0",
-  "thread_1",
-  "thread_2",
-  "thread_3",
-  "thread_4",
-  "thread_5",
-  "thread_6",
-  "thread_7",
-  "thread_8",
-  "thread_9"
-};
+extern UART_HandleTypeDef huart1;
 
 namespace nowtech::LogTopics {
   nowtech::log::TopicInstance system;
   nowtech::log::TopicInstance surplus;
 }
 
-constexpr nowtech::log::TaskId cgMaxTaskCount = cgThreadCount + 1;
+constexpr nowtech::log::TaskId cgMaxTaskCount = 1u;
 constexpr bool cgLogFromIsr = false;
 constexpr size_t cgTaskShutdownSleepPeriod = 100u;
-constexpr bool cgArchitecture64 = true;
+constexpr bool cgArchitecture64 = false;
 constexpr uint8_t cgAppendStackBufferSize = 100u;
 constexpr bool cgAppendBasePrefix = true;
 constexpr bool cgAlignSigned = false;
 constexpr size_t cgTransmitBufferSize = 123u;
 constexpr size_t cgPayloadSize = 8u;
 constexpr bool cgSupportFloatingPoint = true;
-constexpr size_t cgQueueSize = 444u;
+constexpr size_t cgQueueSize = 111u;
 constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
-constexpr size_t cgDirectBufferSize = 43u;
+constexpr size_t cgDirectBufferSize = 0u;
+constexpr uint32_t cgLogTaskStackSize = 256u;
+constexpr uint32_t cgLogTaskPriority = tskIDLE_PRIORITY + 1u;
 
-using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
-constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
-constexpr typename LogAppInterfaceStd::LogTime cgRefreshPeriod = 444;
+using LogAppInterfaceFreeRtosMinimal = nowtech::log::AppInterfaceFreeRtosMinimal<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
+constexpr typename LogAppInterfaceFreeRtosMinimal::LogTime cgTimeout = 123u;
+constexpr typename LogAppInterfaceFreeRtosMinimal::LogTime cgRefreshPeriod = 444;
 using LogMessage = nowtech::log::MessageVariant<cgPayloadSize, cgSupportFloatingPoint>;
 using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
-using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
-using LogQueueVoid = nowtech::log::QueueVoid<LogMessage, LogAppInterfaceStd, cgQueueSize>;
-using Log = nowtech::log::Log<LogQueueVoid, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
+using LogSenderStmHalMinimal = nowtech::log::SenderStmHalMinimal<LogAppInterfaceFreeRtosMinimal, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
+using LogQueueVoid = nowtech::log::QueueFreeRtos<LogMessage, LogAppInterfaceFreeRtosMinimal, cgQueueSize>;
+using Log = nowtech::log::Log<LogQueueVoid, LogSenderStmHalMinimal, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
  
-void delayedLog(size_t n) {
-  Log::registerCurrentTask(cgThreadNames[n]);
-  Log::i(nowtech::LogTopics::system) << n << ": " << 0 << Log::end;
-  for(int64_t i = 1; i < 13; ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1 << i));
-    Log::i(nowtech::LogTopics::system) << n << ". thread delay logarithm: " << LC::X1 << i << Log::end;
-  }
-  Log::unregisterCurrentTask();
+void step() {
+  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+  vTaskDelay(133);
 }
 
-int main() {
-  std::thread threads[cgThreadCount];
-  
+extern "C" void myDefaultTask() {
   nowtech::log::LogConfig logConfig;
   logConfig.allowRegistrationLog = true;
-  LogSenderStdOstream::init(&std::cout);
-  Log::init(logConfig);
+  LogSenderStmHalMinimal::init(&huart1);
+  Log::init(logConfig, cgLogTaskStackSize, cgLogTaskPriority);
 
   Log::registerTopic(nowtech::LogTopics::system, "system");
   Log::registerTopic(nowtech::LogTopics::surplus, "surplus");
@@ -103,53 +84,69 @@ int main() {
   int64_t const int64 = -123456789012345;
 
   Log::i(nowtech::LogTopics::surplus) << "message" << Log::end;
-
+  step();
   Log::i(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
+  step();
   Log::n(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
+  step();
   Log::i() << "uint64: " << uint64 << " int64: " << int64 << Log::end;
+  step();
   Log::n() << "uint64: " << uint64 << " int64: " << int64 << Log::end;
-
+  step();
   uint8_t const uint8 = 42;
   int8_t const int8 = -42;
 
-  try {
-    Log::i(nowtech::LogTopics::system) << uint8 << ' ' << int8 << Log::end;
-    Log::i(nowtech::LogTopics::system) << LC::X2 << uint8 << ' ' << LC::D3 << int8 << Log::end;
-    Log::i() << uint8 << ' ' << int8 << Log::end;
-    Log::i() << LC::X2 << uint8 << int8 << Log::end;
-    Log::i() << Log::end;
-  }
-  catch(std::exception &e) {
-    Log::i() << "Exception: " << e.what() << Log::end;
-  }
-
+  Log::i(nowtech::LogTopics::system) << uint8 << ' ' << int8 << Log::end;
+  step();
+  Log::i(nowtech::LogTopics::system) << LC::X2 << uint8 << ' ' << LC::D3 << int8 << Log::end;
+  step();
+  Log::i() << uint8 << ' ' << int8 << Log::end;
+  step();
+  Log::i() << LC::X2 << uint8 << int8 << Log::end;
+  step();
+  Log::i() << Log::end;
+  step();
   Log::i() << "int8: " << static_cast<int8_t>(123) << Log::end;
+  step();
   Log::i() << "int16: " << static_cast<int16_t>(123) << Log::end;
+  step();
   Log::i() << "int32: " << static_cast<int32_t>(123) << Log::end;
+  step();
   Log::i() << "int64: " << static_cast<int64_t>(123) << Log::end;
+  step();
   Log::i() << "uint8: " << static_cast<uint8_t>(123) << Log::end;
+  step();
   Log::i() << "uint16: " << static_cast<uint16_t>(123) << Log::end;
+  step();
   Log::i() << "uint32: " << static_cast<uint32_t>(123) << Log::end;
+  step();
   Log::i() << "uint64: " << static_cast<uint64_t>(123) << Log::end;
+  step();
   Log::i() << "float: " << 1.234567890f << Log::end;
+  step();
   Log::i() << "double: " << -1.234567890 << Log::end;
+  step();
   Log::i() << "float: " << LC::Fm << -123.4567890f << Log::end;
+  step();
   Log::i() << "double: " << LC::Fm << 123.4567890 << Log::end;
+  step();
   Log::i() << "long double: " << -0.01234567890L << Log::end;
+  step();
   Log::i() << "long double: " << LC::D16 << 0.01234567890L << Log::end;
+  step();
   Log::i() << "bool:" << true << Log::end;
+  step();
   Log::i() << "bool:" << false << Log::end;
+  step();
 
-  for(size_t i = 0; i < cgThreadCount; ++i) {
-    threads[i] = std::thread(delayedLog, i);
+  while(true) {
+    Log::n() << "end" << Log::end;
+    step();
   }
-  for(size_t i = 0; i < cgThreadCount; ++i) {
-    threads[i].join();
-  }
-  Log::unregisterCurrentTask();
-
-  Log::done();
-
-  return 0;
 }
 
+extern "C" void vApplicationMallocFailedHook(void) {
+  while(true) {
+    step();
+  }
+}

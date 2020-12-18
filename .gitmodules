@@ -1,0 +1,3 @@
+[submodule "cpp-memory-manager"]
+	path = cpp-memory-manager
+	url = https://github.com/balazs-bamer/cpp-memory-manager

@@ -1,3 +1,5 @@
+tmp/*
+cmake-build-debug/*
 test-stdthreadostream
 *~
 
@@ -29,3 +31,10 @@ test-stdthreadostream
 *.exe
 *.out
 *.app
+test-stdthreadostream
+test-stdostream
+test-sizes
+test-sizes.s
+test-sizes.asm
+test-sizes.map
+refactor.ods

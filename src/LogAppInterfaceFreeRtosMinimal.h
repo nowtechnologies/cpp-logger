@@ -16,7 +16,7 @@ extern "C" void logTransmitterTask(void* aFunction);
 
 namespace nowtech::log {
 
-template<LogTopic tMaxTaskCount, bool tLogFromIsr, size_t tTaskShutdownSleepPeriod>
+template<TaskId tMaxTaskCount, bool tLogFromIsr, size_t tTaskShutdownPollPeriod>
 class AppInterfaceFreeRtosMinimal final {
 public:
   using LogTime = uint32_t;
@@ -150,7 +150,7 @@ public:
   }
 
   static void sleepWhileWaitingForTaskShutdown() noexcept {
-    vTaskDelay(tTaskShutdownSleepPeriod / portTICK_PERIOD_MS);
+    vTaskDelay(tTaskShutdownPollPeriod / portTICK_PERIOD_MS);
   }
 
 

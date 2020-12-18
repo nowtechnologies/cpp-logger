@@ -11,7 +11,7 @@
 
 namespace nowtech::log {
 
-template<LogTopic tMaxTaskCount, bool tLogFromIsr, size_t tTaskShutdownSleepPeriod>
+template<TaskId tMaxTaskCount, bool tLogFromIsr, size_t tTaskShutdownPollPeriod>
 class AppInterfaceStd final {
 public:
   using LogTime = uint32_t;
@@ -147,7 +147,7 @@ public:
   }
 
   static void sleepWhileWaitingForTaskShutdown() noexcept {
-    std::this_thread::sleep_for(std::chrono::milliseconds(tTaskShutdownSleepPeriod));
+    std::this_thread::sleep_for(std::chrono::milliseconds(tTaskShutdownPollPeriod));
   }
 
   static void lock() noexcept { // Now don't care.

@@ -61,13 +61,14 @@ public:
   /// system and the number represents the minimum digits to write, possibly
   /// with leading zeros. When formats are applied to floating point
   /// numbers, the numeric system info is discarded.
+  inline static constexpr LogFormat cInvalid{ 0u,  0u};
   inline static constexpr LogFormat B4      { 2u,  4u};
   inline static constexpr LogFormat B8      { 2u,  8u};
   inline static constexpr LogFormat B12     { 2u, 12u};
   inline static constexpr LogFormat B16     { 2u, 16u};
   inline static constexpr LogFormat B24     { 2u, 24u};
   inline static constexpr LogFormat B32     { 2u, 32u};
-  inline static constexpr LogFormat Fm      {10u,  0u};
+  inline static constexpr LogFormat Fm      {10u,  0u}; // for maximum precision in floating-point types
   inline static constexpr LogFormat D1      {10u,  1u};
   inline static constexpr LogFormat D2      {10u,  2u};
   inline static constexpr LogFormat D3      {10u,  3u};
@@ -96,7 +97,7 @@ public:
   LogFormat taskIdFormat    = X2;
 
   /// Format for displaying the FreeRTOS ticks in the header, if any. Should be
-  /// LogFormat::cInvalid to disable tick output.
+  /// cInvalid to disable tick output.
   LogFormat tickFormat      = D5;
   LogFormat defaultFormat   = Fm;
 

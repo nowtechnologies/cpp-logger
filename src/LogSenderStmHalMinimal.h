@@ -26,7 +26,6 @@ private:
   inline static ConversionResult   *sTransmitBuffer;
   inline static Iterator            sBegin;
   inline static Iterator            sEnd;
-  inline static uint32_t            csTimeout = 100u;
 
   SenderStmHalMinimal() = delete;
 
@@ -43,7 +42,7 @@ public:
 
   static void send(char const * const aBegin, char const * const aEnd) {
     if(sSerialDescriptor != nullptr) {
-      HAL_UART_Transmit(sSerialDescriptor, reinterpret_cast<uint8_t*>(const_cast<char*>(aBegin)), aEnd - aBegin, csTimeout);
+      HAL_UART_Transmit(sSerialDescriptor, reinterpret_cast<uint8_t*>(const_cast<char*>(aBegin)), aEnd - aBegin, tTimeout);
     }
     else { // nothing to do
     }

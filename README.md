@@ -12,14 +12,14 @@ Log::registerCurrentTask("main");
 
 Log::i(nowtech::LogTopics::system) << "bulk data size:" << someCollection.size() << Log::end;  // one group of 2 items
 
-auto logger = Log::n() << "bulk data follows:"; // one group of many items starts
+auto logger = Log::n<Log::trace>() << "bulk data follows:"; // one group of many items starts
 for(auto item : someCollection) {
   logger << LC::X4 << item;                     // format: hexadecimal, fill to 4 digits
 }
 logger << Log::end;                             // the group of many items ends
 ```
 
-This is a complete rework of my [old logger](https://github.com/balazs-bamer/cpp-logger/tree/old/) after identifying the design flaws and performance problems. I used C++20 -capable compilers during development, but the code is probably C++17 compatible.
+This is a complete rework of my [old logger](https://github.com/balazs-bamer/cpp-logger/tree/old/) after identifying the design flaws and performance problems. The library requires C++17.
 
 The code was written to possibly conform MISRA C++ and High-Integrity C++.
 
@@ -36,7 +36,7 @@ Copyright 2020 Balázs Bámer.
   - String literals or string constants can be transferred using their pointers to save MCU cycles.
   - More transient strings will be copied instantly.
 - Operate in a _strictly typed_ way as opposed to the printf-based loggers some companies still use today.
-- We needed a much finer granularity than the usual log levels, so I've introduced independently selectable topics. However, these allow easy simulation of traditional log levels, see in the API section.
+- We needed a much finer granularity than the usual log levels, so I've introduced independently selectable topics. Recently I've also added traditional log levels.
 - Important aim was to let the user log a _group of related items_ without other tasks interleaving the output of converting these items.
 - Possibly minimal relying on external libraries. It does not depend on numeric to string conversion functions.
 - In contrast with the original solution, the new one extensively uses templated classes to
@@ -263,6 +263,7 @@ Explanation of configuration parameters:
 |`TaskRepresentation tTaskRepresentation`                  |`Log`                    |One of `cNone` (for omitting it), `cId` (for numeric task ID), `cName` (for task name).|
 |`size_t tDirectBufferSize`                                |`Log`                    |When 0, the given _Queue_ will be used. Otherwise, it is the size of a buffer on stack to hold a converted item before sending it.|
 |`typename tSender::tAppInterface_::LogTime tRefreshPeriod`|`Log`                    |Timeout in implementation-defined unit (usually ms) for waiting on the queue before sending what already present.|
+|`ErrorLevel tErrorLevel`                                  |`Log`                    |The application log level with the default value `ErrorLevel::All`.|
 |`bool allowRegistrationLog`                               |`LogConfig`              |True if task (un)registering should be logged.|
 |`LogFormat taskIdFormat`                                  |`LogConfig`              |Format of task ID to use when `tTaskRepresentation == TaskRepresentation::cId`.|
 |`LogFormat tickFormat`                                    |`LogConfig`              |Format for displaying the timestamp in the header, if any. Should be `LogConfig::cInvalid` to disable tick output.|
@@ -282,7 +283,26 @@ nowtech::log::TopicInstance someOtherTopic;
 }
 ```
 
-To enable some of them, the interesting ones must be registered in the log system. Although log levels are not supported natively, here is a workaround to define them.
+To enable some of them, the interesting ones must be registered in the log system. When the log system receives `LogTopic` parameter, it will be logged regardless of the actual applicaiton log level.
+
+There are three possibilities to use log levels.
+
+#### Native log levels
+
+The `Log` class takes an optional template argument, the application log level. The `Log::n(...)` and `Log::i(...)` functions' overloads without operands and taking a `TaskId` (see below) are templated methods with a default value of `ErrorLevel::All`. By providing template values these for methods, the given instantiation chooses between a functional and an empty return value. As the empty one will be fully optimized out for unused log levels, this is more performant than the next one. The log system has these predefined log levels in `Log`:
+
+```C++
+static constexpr ErrorLevel fatal = ErrorLevel::Fatal;
+static constexpr ErrorLevel error = ErrorLevel::Error;
+static constexpr ErrorLevel warn  = ErrorLevel::Warning;
+static constexpr ErrorLevel info  = ErrorLevel::Info;
+static constexpr ErrorLevel debug = ErrorLevel::Debug;
+static constexpr ErrorLevel all   = ErrorLevel::All;
+```
+
+#### Emulated log levels
+
+For topic declarations, please refer above. This method suits better architectures with limited flash space, since it requires no internal method instantiation for each log level used. However, checking topics is a runtime process and total elimination of unused log statements won't happen for optimizing compilation.
 
 ```C++
 #ifdef LEVEL1
@@ -296,6 +316,10 @@ Log::registerTopic(nowtech::LogTopics::level2, "level2");
 Log::registerTopic(nowtech::LogTopics::level3, "level3");
 #endif
 ```
+
+#### Variadic macros
+
+C++20 has suitable variadic macros in the preprocessor, which would enable one to use the folding expression API to define preprocessor-implemented loglevels. I didn't implement it. This would mean a perfect solution from performance and space point of view.
 
 ### Logging
 

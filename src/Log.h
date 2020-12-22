@@ -26,11 +26,21 @@ enum class TaskRepresentation : uint8_t {
 
 using LogTopic = int8_t; // this needs to be signed to let the overload resolution work
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod>
+enum class ErrorLevel : uint8_t {
+  Off      = 0u,
+  Fatal    = 1u,
+  Error    = 2u,
+  Warning  = 3u,
+  Info     = 4u,
+  Debug    = 5u,
+  All      = 6u
+};
+
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod, ErrorLevel tErrorLevel>
 class Log;
 
 class TopicInstance final {
-  template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod>
+  template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod, ErrorLevel tErrorLevel>
   friend class Log;
 
 public:
@@ -109,7 +119,7 @@ enum class LogShiftChainEndMarker : uint8_t {
   cEnd      = 0u
 };
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod>
+template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod, ErrorLevel tErrorLevel = ErrorLevel::All>
 class Log final {
 private:
   static constexpr bool csShutdownLog      = tSender::csVoid;
@@ -366,13 +376,21 @@ private:
     }
   }; // class LogShiftChainHelperEmpty
 
-  using LogShiftChainHelper = std::conditional_t<csShutdownLog, LogShiftChainHelperEmpty, std::conditional_t<csSendInBackground, LogShiftChainHelperBackgroundSend, LogShiftChainHelperDirectSend>>;
+  using LogShiftChainHelperRaw = std::conditional_t<csSendInBackground, LogShiftChainHelperBackgroundSend, LogShiftChainHelperDirectSend>;
+  using LogShiftChainHelper = std::conditional_t<csShutdownLog, LogShiftChainHelperEmpty, LogShiftChainHelperRaw>;
+  template<ErrorLevel tRequestedErrorLevel>
+  using LogShiftChainHelperErrorLevel = std::conditional_t<(csShutdownLog || tErrorLevel < tRequestedErrorLevel), LogShiftChainHelperEmpty, LogShiftChainHelperRaw>;
 
 public:
   /// Will be used as Log << something << to << log << Log::end;
-  static constexpr LogShiftChainEndMarker end = LogShiftChainEndMarker::cEnd;
+  static constexpr LogShiftChainEndMarker end   = LogShiftChainEndMarker::cEnd;
+  static constexpr ErrorLevel             fatal = ErrorLevel::Fatal;
+  static constexpr ErrorLevel             error = ErrorLevel::Error;
+  static constexpr ErrorLevel             warn  = ErrorLevel::Warning;
+  static constexpr ErrorLevel             info  = ErrorLevel::Info;
+  static constexpr ErrorLevel             debug = ErrorLevel::Debug;
+  static constexpr ErrorLevel             all   = ErrorLevel::All;
 
-  // TODO remark in docs: must come before registering topics
   template<typename ...tTypes>
   static void init(LogConfig const &aConfig, tTypes... aArgs) {
     if constexpr(!csShutdownLog) {
@@ -510,22 +528,24 @@ public:
     }
   }
 
-  static LogShiftChainHelper i() noexcept {
-    if constexpr(!csShutdownLog) {
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::All>
+  static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> i() noexcept {
+    if constexpr(!csShutdownLog && tErrorLevel >= tRequestedErrorLevel) {
       TaskId const taskId = tAppInterface::getCurrentTaskId();
-      return sendHeader(taskId);
+      return sendHeader<LogShiftChainHelperErrorLevel<tRequestedErrorLevel>>(taskId);
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{csInvalidTaskId};
     }
   }
 
-  static LogShiftChainHelper i(TaskId const aTaskId) noexcept {
-    if constexpr(!csShutdownLog) {
-      return sendHeader(aTaskId);
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::All>
+  static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> i(TaskId const aTaskId) noexcept {
+    if constexpr(!csShutdownLog && tErrorLevel >= tRequestedErrorLevel) {
+      return sendHeader<LogShiftChainHelperErrorLevel<tRequestedErrorLevel>>(aTaskId);
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{csInvalidTaskId};
     }
   }
 
@@ -533,10 +553,10 @@ public:
     if constexpr(!csShutdownLog) {
       if(sRegisteredTopics[aTopic] != nullptr) {
         TaskId const taskId = tAppInterface::getCurrentTaskId();
-        return sendHeader(taskId, sRegisteredTopics[aTopic]);
+        return sendHeader<LogShiftChainHelper>(taskId, sRegisteredTopics[aTopic]);
       }
       else {
-        return sendHeader(csInvalidTaskId);
+        return sendHeader<LogShiftChainHelper>(csInvalidTaskId);
       }
     }
     else {
@@ -547,10 +567,10 @@ public:
   static LogShiftChainHelper i(LogTopic const aTopic, TaskId const aTaskId) noexcept {
     if constexpr(!csShutdownLog) {
       if(sRegisteredTopics[aTopic] != nullptr) {
-        return sendHeader(aTaskId, sRegisteredTopics[aTopic]);
+        return sendHeader<LogShiftChainHelper>(aTaskId, sRegisteredTopics[aTopic]);
       }
       else {
-        return sendHeader(csInvalidTaskId);
+        return sendHeader<LogShiftChainHelper>(csInvalidTaskId);
       }
     }
     else {
@@ -558,21 +578,23 @@ public:
     }
   }
 
-  static LogShiftChainHelper n() noexcept {
-    if constexpr(!csShutdownLog) {
-      return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::All>
+  static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> n() noexcept {
+    if constexpr(!csShutdownLog && tErrorLevel >= tRequestedErrorLevel) {
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{tAppInterface::getCurrentTaskId()};
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{csInvalidTaskId};
     }
   }
 
-  static LogShiftChainHelper n(TaskId const aTaskId) noexcept {
-    if constexpr(!csShutdownLog) {
-      return LogShiftChainHelper{aTaskId};
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::All>
+  static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> n(TaskId const aTaskId) noexcept {
+    if constexpr(!csShutdownLog && tErrorLevel >= tRequestedErrorLevel) {
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{aTaskId};
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{csInvalidTaskId};
     }
   }
 
@@ -610,8 +632,9 @@ public:
   }
 
 private:
-  static LogShiftChainHelper sendHeader(TaskId const aTaskId) noexcept {
-    LogShiftChainHelper result{aTaskId};
+  template <typename tLogShiftChainHelper>
+  static tLogShiftChainHelper sendHeader(TaskId const aTaskId) noexcept {
+    tLogShiftChainHelper result{aTaskId};
     if(result.isValid()) {
       if constexpr(tTaskRepresentation == TaskRepresentation::cId) {
         result << sConfig->taskIdFormat << aTaskId;
@@ -637,8 +660,9 @@ private:
     return result;
   }
 
-  static LogShiftChainHelper sendHeader(TaskId const aTaskId, char const * aTopicName) noexcept {
-    LogShiftChainHelper result = sendHeader(aTaskId);
+  template <typename tLogShiftChainHelper>
+  static tLogShiftChainHelper sendHeader(TaskId const aTaskId, char const * aTopicName) noexcept {
+    tLogShiftChainHelper result = sendHeader<tLogShiftChainHelper>(aTaskId);
     if(result.isValid() && aTopicName != nullptr) {
       result << aTopicName;
     }

@@ -69,6 +69,7 @@ constexpr size_t cgQueueSize = 444u;
 constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
 constexpr size_t cgDirectBufferSize = 0u;
+constexpr nowtech::log::ErrorLevel cgErrorLevel = nowtech::log::ErrorLevel::Error;
 
 using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
@@ -77,7 +78,7 @@ using LogMessage = nowtech::log::MessageCompact<cgPayloadSize, cgSupportFloating
 using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
 using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
 using LogQueueStdBoost = nowtech::log::QueueStdBoost<LogMessage, LogAppInterfaceStd, cgQueueSize>;
-using Log = nowtech::log::Log<LogQueueStdBoost, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
+using Log = nowtech::log::Log<LogQueueStdBoost, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod, cgErrorLevel>;
  
 void delayedLog(size_t n) {
   Log::registerCurrentTask(cgThreadNames[n]);
@@ -147,6 +148,17 @@ int main() {
 //  Log::i() << "long double: " << LC::D16 << 0.01234567890L << Log::end;
   Log::i() << "bool:" << true << Log::end;
   Log::i() << "bool:" << false << Log::end;
+
+  Log::i<Log::fatal>() << "fatal" << Log::end;
+  Log::i<Log::error>() << "error" << Log::end;
+  Log::i<Log::warn>() << "warning" << Log::end;
+  Log::i<Log::info>() << "info" << Log::end;
+  Log::i<Log::debug>() << "debug" << Log::end;
+  Log::n<Log::fatal>() << "fatal" << Log::end;
+  Log::n<Log::error>() << "error" << Log::end;
+  Log::n<Log::warn>() << "warning" << Log::end;
+  Log::n<Log::info>() << "info" << Log::end;
+  Log::n<Log::debug>() << "debug" << Log::end;
 
   for(size_t i = 0; i < cgThreadCount; ++i) {
     threads[i] = std::thread(delayedLog, i);

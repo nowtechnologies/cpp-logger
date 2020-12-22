@@ -300,6 +300,12 @@ static constexpr ErrorLevel debug = ErrorLevel::Debug;
 static constexpr ErrorLevel all   = ErrorLevel::All;
 ```
 
+So logging happens like
+
+```C++
+Log::i<Log::trace>() << "x:" << LC::D4 << posX << "y:" << LC::D4 << posY;
+```
+
 #### Emulated log levels
 
 For topic declarations, please refer above. This method suits better architectures with limited flash space, since it requires no internal method instantiation for each log level used. However, checking topics is a runtime process and total elimination of unused log statements won't happen for optimizing compilation.

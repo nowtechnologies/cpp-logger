@@ -12,7 +12,7 @@ Log::registerCurrentTask("main");
 
 Log::i(nowtech::LogTopics::system) << "bulk data size:" << someCollection.size() << Log::end;  // one group of 2 items
 
-auto logger = Log::n<Log::trace>() << "bulk data follows:"; // one group of many items starts
+auto logger = Log::n<Log::debug>() << "bulk data follows:"; // one group of many items starts
 for(auto item : someCollection) {
   logger << LC::X4 << item;                     // format: hexadecimal, fill to 4 digits
 }
@@ -303,7 +303,7 @@ static constexpr ErrorLevel all   = ErrorLevel::All;
 So logging happens like
 
 ```C++
-Log::i<Log::trace>() << "x:" << LC::D4 << posX << "y:" << LC::D4 << posY;
+Log::i<Log::debug>() << "x:" << LC::D4 << posX << "y:" << LC::D4 << posY;
 ```
 
 #### Emulated log levels

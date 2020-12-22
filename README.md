@@ -303,7 +303,7 @@ static constexpr ErrorLevel all   = ErrorLevel::All;
 So logging happens like
 
 ```C++
-Log::i<Log::debug>() << "x:" << LC::D4 << posX << "y:" << LC::D4 << posY;
+Log::i<Log::debug>() << "x:" << LC::D4 << posX << "y:" << LC::D4 << posY << Log::end;
 ```
 
 #### Emulated log levels

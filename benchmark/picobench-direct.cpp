@@ -59,7 +59,8 @@ int main(int argc, char* argv[])
 
   picobench::runner r;
   r.parse_cmd_line(argc, argv);
-  return r.run();
+  auto ret = r.run();
   Log::unregisterCurrentTask();
   Log::done();
+  return ret;
 }

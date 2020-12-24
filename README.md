@@ -17,6 +17,11 @@ for(auto item : someCollection) {
   logger << LC::X4 << item;                     // format: hexadecimal, fill to 4 digits
 }
 logger << Log::end;                             // the group of many items ends
+
+//...
+
+Log::unregisterCurrentTask();
+Log::done();
 ```
 
 This is a complete rework of my [old logger](https://github.com/balazs-bamer/cpp-logger/tree/old/) after identifying the design flaws and performance problems. The library requires C++17.
@@ -124,6 +129,20 @@ This is a minimal implementation for STM32 UART using blocking HAL transmission.
 ### LogSenderStdOstream
 
 It is a simple std::ostream wrapper.
+
+## Benchmarks
+
+I used [picobench](https://github.com/iboB/picobench) for benchmarks using the supplied bechmark apps. Here are some averaged results for 8192 iterations on my _Intel(R) Xeon(R) CPU E31220L @ 2.20GHz_. Compiled using `clang++ -O2`. There were no significant differences for `MessageVariant` or `MessageCompact`. Log activity was
+- print header
+  - print task name
+  - print timestamp
+- print the logged string
+
+|Scenario                 |Average ns / log call|
+|-------------------------|--------------------:|
+|direct                   |250|
+|Constant string (no copy)|450|
+|Transient string (copy)  |580|
 
 ## Space requirements
 

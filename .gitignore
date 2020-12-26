@@ -31,6 +31,7 @@ test-stdthreadostream
 *.exe
 *.out
 *.app
+picobench
 test-stdthreadostream
 test-stdostream
 test-sizes

@@ -41,9 +41,11 @@ using LogSender = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverte
 using LogQueue = nowtech::log::QueueVoid<LogMessage, LogAppInterfaceStd, cgQueueSize>;
 using Log = nowtech::log::Log<LogQueue, LogSender, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod, cgRequiredLevel>;
 
+nowtech::log::TaskId gTaskId;
+
 void nowtechLogRef(picobench::state& s) {
   for (auto _ : s) {
-    Log::i<Log::info>() << "Info message" << Log::end;
+    Log::i<Log::info>(gTaskId) << "Info message" << Log::end;
   }
 }
 PICOBENCH(nowtechLogRef);
@@ -56,6 +58,7 @@ int main(int argc, char* argv[])
   LogSender::init(&out);
   Log::init(logConfig);
   Log::registerCurrentTask("main");
+  gTaskId = Log::getCurrentTaskId();
 
   picobench::runner r;
   r.parse_cmd_line(argc, argv);

@@ -132,17 +132,19 @@ It is a simple std::ostream wrapper.
 
 ## Benchmarks
 
-I used [picobench](https://github.com/iboB/picobench) for benchmarks using the supplied bechmark apps. Here are some averaged results for 8192 iterations on my _Intel(R) Xeon(R) CPU E31220L @ 2.20GHz_. Compiled using `clang++ -O2`. There were no significant differences for `MessageVariant` or `MessageCompact`. Log activity was
+I used [picobench](https://github.com/iboB/picobench) for benchmarks using the supplied bechmark apps. Here are some averaged results measured on 8192 iterations on my _Intel(R) Xeon(R) CPU E31220L @ 2.20GHz_. Compiled using `clang++ -O2`. There were no significant differences for `MessageVariant` or `MessageCompact`. Log activity was
 - print header
   - print task name
   - print timestamp
 - print the logged string
 
-|Scenario                 |Average ns / log call|
-|-------------------------|--------------------:|
-|direct                   |250|
-|Constant string (no copy)|450|
-|Transient string (copy)  |580|
+Each value is the average time required for _one_ log call in nanoseconds.
+
+|Scenario                 |Unknown `TaskId` (ns)|Provided `TaskId` (ns)|
+|-------------------------|--------------------:|---------------------:|
+|direct                   |250                  |160                   |
+|Constant string (no copy)|450                  |430                   |
+|Transient string (copy)  |580                  |500                   |
 
 ## Space requirements
 

@@ -143,7 +143,7 @@ Each value is the average time required for _one_ log call in nanoseconds.
 |Scenario                 |Unknown `TaskId` (ns)|Provided `TaskId` (ns)|
 |-------------------------|--------------------:|---------------------:|
 |direct                   |250                  |160                   |
-|Constant string (no copy)|450                  |430                   |
+|Constant string (no copy)|500                  |430                   |
 |Transient string (copy)  |580                  |500                   |
 
 ## Space requirements

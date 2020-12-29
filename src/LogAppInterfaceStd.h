@@ -41,21 +41,25 @@ public:
 private:
   class Semaphore final {
   private:
-    std::atomic<bool>              mNotified = false;
-    std::mutex                     mMutex;
-    std::unique_lock<std::mutex>   mLock;
-    std::condition_variable        mConditionVariable;
+    std::atomic<bool>            mNotified = false;
+    std::mutex                   mMutex;
+    std::unique_lock<std::mutex> mLock;
+    std::condition_variable      mConditionVariable;
 
   public:
     Semaphore() noexcept : mLock(mMutex) {
     }
 
     void wait() noexcept {
+      mNotified = false;
       mConditionVariable.wait(mLock, [this] { return mNotified == true; });
     }
 
     void notify() noexcept {
-      mNotified = true;
+      {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mNotified = true;
+      }
       mConditionVariable.notify_one();
     }
   };
@@ -154,6 +158,14 @@ public:
   }
 
   static void unlock() noexcept { // Now don't care.
+  }
+
+  static void atomicBufferSendWait() noexcept {
+    sSemaphore.wait();
+  }
+
+  static void atomicBufferSendFinished() noexcept {
+    sSemaphore.notify();
   }
 
   static void error(Exception const aError) {

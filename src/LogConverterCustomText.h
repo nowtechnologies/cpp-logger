@@ -10,9 +10,9 @@ namespace nowtech::log {
 template<typename tMessage, bool tArchitecture64, uint8_t tAppendStackBufferSize, bool tAppendBasePrefix, bool tAlignSigned>
 class ConverterCustomText final {
 public:
-  using tMessage_        = tMessage;
-  using ConversionResult = char;
-  using Iterator         = char*;
+  using tMessage_          = tMessage;
+  using ConversionResult   = char;
+  using Iterator           = char*;
   static constexpr Iterator csNullIterator = nullptr; // Used in SenderVoid to return void begin-end pair.
   static constexpr bool     csSupportFloatingPoint = tMessage::csSupportFloatingPoint;
 

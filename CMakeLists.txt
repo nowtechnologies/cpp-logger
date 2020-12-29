@@ -6,12 +6,13 @@ set(CMAKE_CXX_STANDARD 17)
 include_directories(cpp-memory-manager)
 include_directories(src)
 
-add_compile_options(-Os -Wall -Wextra -Wpedantic)
+add_compile_options(-Og -ggdb -Wall -Wextra -Wpedantic)
 add_link_options(-lpthread)
 
 add_executable(cpp_logger
         cpp-memory-manager/PoolAllocator.h
         src/Log.h
+        src/LogAtomicBuffers.h
         src/LogAppInterfaceStd.h
         src/LogConverterCustomText.h
         src/LogMessageBase.h
@@ -22,4 +23,4 @@ add_executable(cpp_logger
         src/LogQueueVoid.h
         src/LogSenderStdOstream.h
         src/LogSenderVoid.h
-        test/test-sizes-stdthreadostream.cpp)
+        test/test-stdthreadostream.cpp)

@@ -20,10 +20,10 @@ public:
 private:
   class FreeRtosQueue final {
     boost::lockfree::queue<tMessage> mQueue;
-    std::atomic<bool>              mNotified;
-    std::mutex                     mMutex;
-    std::unique_lock<std::mutex>   mLock;
-    std::condition_variable        mConditionVariable;
+    std::atomic<bool>                mNotified;
+    std::mutex                       mMutex;
+    std::unique_lock<std::mutex>     mLock;
+    std::condition_variable          mConditionVariable;
 
   public:
     /// First implementation, we assume we have plenty of memory.
@@ -42,7 +42,10 @@ private:
     void push(tMessage const &aMessage) noexcept {
       bool success = mQueue.bounded_push(aMessage);
       if(success) {
-        mNotified = true;
+        {
+          std::lock_guard<std::mutex> lock(mMutex);
+          mNotified = true;
+        }
         mConditionVariable.notify_one();
       }
       else { // nothing to do

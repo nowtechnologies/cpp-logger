@@ -204,10 +204,12 @@ private:
   private:
     inline static constexpr char      csEmptyString[] = "";
     inline static constexpr LogFormat csEmptyFormat {2u, 0u};
+
     TaskId          mTaskId;
     LogFormat       mNextFormat;
     MessageSequence mNextSequence;
     tMessage        mFirstMessage;
+    bool            mWasMessage;
 
   public:
     static constexpr LogShiftChainEndMarker end = LogShiftChainEndMarker::cEnd;
@@ -216,9 +218,9 @@ private:
 
     LogShiftChainHelperBackgroundSend(TaskId const aTaskId) noexcept
      : mTaskId(aTaskId)
-     , mNextSequence(0u) {
+     , mNextSequence(0u)
+     , mWasMessage(false) {
       mNextFormat.invalidate();
-      mFirstMessage.set(csEmptyString, csEmptyFormat, mTaskId, mNextSequence); // This will be overwritten if any message arrives.
     }
 
     /// Can be used in application code to eliminate further operator<< calls when the topic is disabled.
@@ -254,6 +256,11 @@ private:
 
     void operator<<(LogShiftChainEndMarker const) noexcept {
       if(mTaskId != csInvalidTaskId) {
+        if(!mWasMessage) {
+          mFirstMessage.set(csEmptyString, csEmptyFormat, mTaskId, csSequence0);
+        }
+        else { // nothing to do
+        }
         tQueue::push(mFirstMessage);
       }
       else { // nothing to do
@@ -309,6 +316,7 @@ private:
 
     void sendOrStore(tMessage const & aMessage) noexcept {
       if(mNextSequence == csSequence0) {
+        mWasMessage = true;
         mFirstMessage = aMessage;
       }
       else {
@@ -828,6 +836,9 @@ private:
       }
       tSender::send(outBegin, validOutEnd);
     }
+    tConverter converter(outBegin, outEnd);
+    converter.terminateSequence();
+    tSender::send(outBegin, converter.end());
   }
 };
 

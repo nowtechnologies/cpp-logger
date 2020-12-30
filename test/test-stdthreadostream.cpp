@@ -193,6 +193,7 @@ int main() {
   }
   Log::sendAtomicBuffer();
   Log::n() << Log::end;
+  std::this_thread::sleep_for(std::chrono::seconds(2));
 
   Log::unregisterCurrentTask();
   Log::done();

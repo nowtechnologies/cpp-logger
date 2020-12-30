@@ -201,6 +201,9 @@ private:
 
   /// This will be used to send via queue. It stores the first message, and sends it only with the terminal marker.
   class LogShiftChainHelperBackgroundSend final {
+  private:
+    inline static constexpr char      csEmptyString[] = "";
+    inline static constexpr LogFormat csEmptyFormat {2u, 0u};
     TaskId          mTaskId;
     LogFormat       mNextFormat;
     MessageSequence mNextSequence;
@@ -214,7 +217,8 @@ private:
     LogShiftChainHelperBackgroundSend(TaskId const aTaskId) noexcept
      : mTaskId(aTaskId)
      , mNextSequence(0u) {
-       mNextFormat.invalidate();
+      mNextFormat.invalidate();
+      mFirstMessage.set(csEmptyString, csEmptyFormat, mTaskId, mNextSequence); // This will be overwritten if any message arrives.
     }
 
     /// Can be used in application code to eliminate further operator<< calls when the topic is disabled.
@@ -579,7 +583,7 @@ public:
     }
   }
 
-  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::All>
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::Off>
   static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> i() noexcept {
     if constexpr(!csShutdownLog && csErrorLevel >= tRequestedErrorLevel) {
       TaskId const taskId = tAppInterface::getCurrentTaskId();
@@ -590,7 +594,7 @@ public:
     }
   }
 
-  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::All>
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::Off>
   static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> i(TaskId const aTaskId) noexcept {
     if constexpr(!csShutdownLog && csErrorLevel >= tRequestedErrorLevel) {
       return sendHeader<LogShiftChainHelperErrorLevel<tRequestedErrorLevel>>(aTaskId);
@@ -629,7 +633,7 @@ public:
     }
   }
 
-  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::All>
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::Off>
   static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> n() noexcept {
     if constexpr(!csShutdownLog && csErrorLevel >= tRequestedErrorLevel) {
       return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{tAppInterface::getCurrentTaskId()};
@@ -639,7 +643,7 @@ public:
     }
   }
 
-  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::All>
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::Off>
   static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> n(TaskId const aTaskId) noexcept {
     if constexpr(!csShutdownLog && csErrorLevel >= tRequestedErrorLevel) {
       return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{aTaskId};

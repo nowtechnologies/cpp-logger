@@ -5,7 +5,7 @@
 
 namespace nowtech::log {
 
-template<typename tMessage, typename tAppInterface, size_t tQueueSize>
+template<typename tMessage, typename tAppInterface>
 class QueueVoid final {
 public:
   using tMessage_ = tMessage;

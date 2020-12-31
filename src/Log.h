@@ -703,7 +703,7 @@ private:
         result << sConfig->taskIdFormat << aTaskId;
       }
       else if constexpr (csTaskRepresentation == TaskRepresentation::cName) {
-        if constexpr (csConstantTaskNames) {
+        if constexpr (csConstantTaskNames || !csSendInBackground) {
           result << tAppInterface::getTaskName(aTaskId);
         }
         else {

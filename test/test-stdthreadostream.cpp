@@ -184,7 +184,6 @@ int main() {
   }
 
   gCounter = 0;
-
   for(size_t i = 0; i < cgThreadCount; ++i) {
     threads[i] = std::thread(atomicLog, i);
   }
@@ -193,7 +192,6 @@ int main() {
   }
   Log::sendAtomicBuffer();
   Log::n() << Log::end;
-  std::this_thread::sleep_for(std::chrono::seconds(2));
 
   Log::unregisterCurrentTask();
   Log::done();

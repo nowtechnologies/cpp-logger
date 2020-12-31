@@ -54,35 +54,53 @@ namespace nowtech::LogTopics {
 }
 
 constexpr nowtech::log::TaskId cgMaxTaskCount = cgThreadCount + 1;
+constexpr bool cgAllowRegistrationLog = true;
 constexpr bool cgLogFromIsr = false;
 constexpr size_t cgTaskShutdownSleepPeriod = 100u;
 constexpr bool cgArchitecture64 = true;
 constexpr uint8_t cgAppendStackBufferSize = 100u;
 constexpr bool cgAppendBasePrefix = true;
 constexpr bool cgAlignSigned = false;
+using AtomicBufferType = int32_t;
+constexpr size_t cgAtomicBufferExponent = 14u;
+constexpr AtomicBufferType cgAtomicBufferInvalidValue = 1234546789;
 constexpr size_t cgTransmitBufferSize = 123u;
-constexpr size_t cgPayloadSize = 8u;
+constexpr size_t cgPayloadSize = 14u;
 constexpr bool cgSupportFloatingPoint = true;
 constexpr size_t cgQueueSize = 444u;
 constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
 constexpr size_t cgDirectBufferSize = 43u;
+constexpr nowtech::log::ErrorLevel cgErrorLevel = nowtech::log::ErrorLevel::Error;
 
-using LogAppInterfaceStd = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
-constexpr typename LogAppInterfaceStd::LogTime cgTimeout = 123u;
-constexpr typename LogAppInterfaceStd::LogTime cgRefreshPeriod = 444;
+using LogAppInterface = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
+constexpr typename LogAppInterface::LogTime cgTimeout = 123u;
+constexpr typename LogAppInterface::LogTime cgRefreshPeriod = 444;
 using LogMessage = nowtech::log::MessageVariant<cgPayloadSize, cgSupportFloatingPoint>;
 using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
-using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterfaceStd, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
-using LogQueueVoid = nowtech::log::QueueVoid<LogMessage, LogAppInterfaceStd, cgQueueSize>;
-using Log = nowtech::log::Log<LogQueueVoid, LogSenderStdOstream, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
- 
+using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterface, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
+using LogQueueVoid = nowtech::log::QueueVoid<LogMessage, LogAppInterface, cgQueueSize>;
+using LogAtomicBuffer = nowtech::log::AtomicBufferOperational<LogAppInterface, AtomicBufferType, cgAtomicBufferExponent, cgAtomicBufferInvalidValue>;
+using LogConfig = nowtech::log::Config<cgAllowRegistrationLog, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod, cgErrorLevel>;
+using Log = nowtech::log::Log<LogQueueVoid, LogSenderStdOstream, LogAtomicBuffer, LogConfig>;
+
 void delayedLog(size_t n) {
   Log::registerCurrentTask(cgThreadNames[n]);
   Log::i(nowtech::LogTopics::system) << n << ": " << 0 << Log::end;
-  for(int64_t i = 1; i < 13; ++i) {
+  for(int64_t i = 1; i < 3; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1 << i));
     Log::i(nowtech::LogTopics::system) << n << ". thread delay logarithm: " << LC::X1 << i << Log::end;
+  }
+  Log::unregisterCurrentTask();
+}
+
+std::atomic<int32_t> gCounter;
+constexpr int32_t cgAtomicCount = 100;
+
+void atomicLog(size_t n) {
+  Log::registerCurrentTask(cgThreadNames[n]);
+  for(int32_t i = 0; i < cgAtomicCount; ++i) {
+    Log::pushAtomic(gCounter++);
   }
   Log::unregisterCurrentTask();
 }
@@ -90,8 +108,7 @@ void delayedLog(size_t n) {
 int main() {
   std::thread threads[cgThreadCount];
   
-  nowtech::log::LogConfig logConfig;
-  logConfig.allowRegistrationLog = true;
+  nowtech::log::LogFormatConfig logConfig;
   LogSenderStdOstream::init(&std::cout);
   Log::init(logConfig);
 
@@ -146,10 +163,18 @@ int main() {
   for(size_t i = 0; i < cgThreadCount; ++i) {
     threads[i].join();
   }
+
+  gCounter = 0;
+  for(size_t i = 0; i < cgThreadCount; ++i) {
+    threads[i] = std::thread(atomicLog, i);
+  }
+  for(size_t i = 0; i < cgThreadCount; ++i) {
+    threads[i].join();
+  }
+  Log::sendAtomicBuffer();
+
   Log::unregisterCurrentTask();
-
   Log::done();
-
   return 0;
 }
 

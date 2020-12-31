@@ -184,7 +184,7 @@ For desktop, I used clang version 10.0.0 on x64. For embedded, I used arm-none-e
 - logging with queue using MessageVariant (for multithreaded applications)
 - logging with queue using MessageCompact (for multithreaded applications)
 
-### FreeRTOS with floating point
+### FreeRTOS with floating point STALE
 
 To obtain net results, I put some floating-point operations in the application *test-sizes-freertosminimal-float.cpp* because a real application would use them apart of logging. 
 
@@ -195,7 +195,7 @@ To obtain net results, I put some floating-point operations in the application *
 |MessageVariant|15304  |112   | 76    |
 |MessageCompact|15024  |112   | 76    |
 
-### FreeRTOS without floating point
+### FreeRTOS without floating point STALE
 
 No floating point arithmetics in the application and the support is turned off in the logger. Source is *test-sizes-freertosminimal-nofloat.cpp*
 
@@ -206,16 +206,26 @@ No floating point arithmetics in the application and the support is turned off i
 |MessageVariant|6440   |12    | 80    |
 |MessageCompact|6192   |12    | 80    |
 
-### x86 STL with floating point
+### x86 STL with floating point, only chained log
 
 Not much point to calculate size growth here, but why not? Source is *test-sizes-stdthreadostream.cpp*
 
 |Scenario      |   Text|  Data|    BSS|
 |--------------|------:|-----:|------:|
-|direct        |11899  | 273  |492    |
+|direct        |11835  | 273  |492    |
 |off           |0      |0     |0      |
-|MessageVariant|22483  | 457  |892    |
-|MessageCompact|20851  |457   | 892   |
+|MessageVariant|22803  | 457  |892    |
+|MessageCompact|21175  |457   | 892   |
+
+### x86 STL with floating point, only atomic log
+
+Not much point to calculate size growth here, but why not? Source is *test-sizes-stdthreadostream.cpp*
+
+|Scenario      |   Text|  Data|    BSS|
+|--------------|------:|-----:|------:|
+|direct        |9536   | 233  |516    |
+|off           |0      |0     |0      |
+|multithreaded |20467  |457   | 916   |
 
 ## API
 
@@ -259,31 +269,36 @@ Log system initialiation consists of the following steps:
 Refer the beginning for an example for STL without the first step. Here is a FreeRTOS template declaration without floating point support but for multithreaded mode:
 
 ```C++
-constexpr nowtech::log::TaskId cgMaxTaskCount = 1u;
+constexpr nowtech::log::TaskId cgMaxTaskCount = cgThreadCount + 1;
+constexpr bool cgAllowRegistrationLog = true;
 constexpr bool cgLogFromIsr = false;
-constexpr size_t cgTaskShutdownPollPeriod = 100u;
-constexpr bool cgArchitecture64 = false;
+constexpr size_t cgTaskShutdownSleepPeriod = 100u;
+constexpr bool cgArchitecture64 = true;
 constexpr uint8_t cgAppendStackBufferSize = 100u;
 constexpr bool cgAppendBasePrefix = true;
 constexpr bool cgAlignSigned = false;
+using AtomicBufferType = int32_t;
+constexpr size_t cgAtomicBufferExponent = 14u;
+constexpr AtomicBufferType cgAtomicBufferInvalidValue = 1234546789;
 constexpr size_t cgTransmitBufferSize = 123u;
-constexpr size_t cgPayloadSize = 6u;            // This disables 64-bit integer arithmetic.
-constexpr bool cgSupportFloatingPoint = false;
-constexpr size_t cgQueueSize = 111u;
+constexpr size_t cgPayloadSize = 14u;
+constexpr bool cgSupportFloatingPoint = true;
+constexpr size_t cgQueueSize = 444u;
 constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
-constexpr uint32_t cgLogTaskStackSize = 256u;
-constexpr uint32_t cgLogTaskPriority = tskIDLE_PRIORITY + 1u;
-
 constexpr size_t cgDirectBufferSize = 0u;
-using LogAppInterfaceFreeRtosMinimal = nowtech::log::AppInterfaceFreeRtosMinimal<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownPollPeriod>;
-constexpr typename LogAppInterfaceFreeRtosMinimal::LogTime cgTimeout = 123u;
-constexpr typename LogAppInterfaceFreeRtosMinimal::LogTime cgRefreshPeriod = 444;
+constexpr nowtech::log::ErrorLevel cgErrorLevel = nowtech::log::ErrorLevel::Error;
+
+using LogAppInterface = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
+constexpr typename LogAppInterface::LogTime cgTimeout = 123u;
+constexpr typename LogAppInterface::LogTime cgRefreshPeriod = 444;
 using LogMessage = nowtech::log::MessageCompact<cgPayloadSize, cgSupportFloatingPoint>;
-using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
-using LogSender = nowtech::log::SenderStmHalMinimal<LogAppInterfaceFreeRtosMinimal, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
-using LogQueue = nowtech::log::QueueFreeRtos<LogMessage, LogAppInterfaceFreeRtosMinimal, cgQueueSize>;
-using Log = nowtech::log::Log<LogQueue, LogSender, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
+using LogConverter = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
+using LogSender = nowtech::log::SenderStdOstream<LogAppInterface, LogConverter, cgTransmitBufferSize, cgTimeout>;
+using LogQueue = nowtech::log::QueueStdBoost<LogMessage, LogAppInterface, cgQueueSize>;
+using LogAtomicBuffer = nowtech::log::AtomicBufferOperational<LogAppInterface, AtomicBufferType, cgAtomicBufferExponent, cgAtomicBufferInvalidValue>;
+using LogConfig = nowtech::log::Config<cgAllowRegistrationLog, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod, cgErrorLevel>;
+using Log = nowtech::log::Log<LogQueue, LogSender, LogAtomicBuffer, LogConfig>;
 ```
 
 Explanation of configuration parameters:
@@ -427,10 +442,10 @@ int16_t value = 13;
 Log::pushAtomic(value);
 ```
 
-Of course this is only effective if the logging is on and the `AtomicBufferOperational` class is being used. These values are accepted from any task and land in a circular buffer, which is continuously overwritten. To extract the contents, first the application should stop calling `Log::pushAtomic` because the slower readout would produce undefined behaviour when still being written into. (There is no locking for maximum performance.) Then, a task with valid log registry should call
+Of course this is only effective if the logging is on and the `AtomicBufferOperational` class is being used. These values are accepted from any task or ISR and land in a circular buffer, which is continuously overwritten. To extract the contents, first the application should stop calling `Log::pushAtomic` because the slower readout would produce undefined behaviour when still being written into. (There is no locking for maximum performance.) Then, a task with valid log registry should call
 
 ```C++
 Log::sendAtomicBuffer();
 ```
 
-which is a blocking call for direct sending, but happens in the background in multithreaded mode. Note, in this later case sending from all other tasks is blocked, only the queues will hold the messages from concurrent logging as long as they can.
+which is a blocking call. Note, in multithreaded mode sending from all other tasks won't happen, only the queues will hold the messages from concurrent logging as long as they can.

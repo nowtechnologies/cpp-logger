@@ -2,8 +2,6 @@
 #define PICOBENCH_DEFAULT_SAMPLES 10
 #include "picobench/picobench.hpp"
 
-//#include "lwlog/lwlog.h"
-
 #include "LogAppInterfaceStd.h"
 #include "LogConverterCustomText.h"
 #include "LogSenderStdOstream.h"

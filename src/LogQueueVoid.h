@@ -12,6 +12,8 @@ public:
   using tAppInterface_ = tAppInterface;
   using LogTime = typename tAppInterface::LogTime;
 
+  static constexpr size_t csQueueSize = 0u;
+
 private:
   QueueVoid() = delete;
 

@@ -42,7 +42,7 @@ private:
     void push(tMessage const &aMessage) noexcept {
       bool success = mQueue.bounded_push(aMessage);
       if(success) {
-        mNotified = true;
+        mNotified = true;         // Having no lock_guard here makes tremendous speedup.
         mConditionVariable.notify_one();
       }
       else { // nothing to do

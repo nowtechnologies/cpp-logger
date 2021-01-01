@@ -23,4 +23,4 @@ add_executable(cpp_logger
         src/LogQueueVoid.h
         src/LogSenderStdOstream.h
         src/LogSenderVoid.h
-        test/test-sizes-atomic-stdostream.cpp)
+        test/test-stdthreadostream.cpp)

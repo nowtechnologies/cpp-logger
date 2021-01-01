@@ -42,7 +42,10 @@ private:
     void push(tMessage const &aMessage) noexcept {
       bool success = mQueue.bounded_push(aMessage);
       if(success) {
-        mNotified = true;
+        {
+          std::lock_guard<std::mutex> lock(mMutex);
+          mNotified = true;
+        }
         mConditionVariable.notify_one();
       }
       else { // nothing to do
@@ -52,10 +55,7 @@ private:
     bool pop(tMessage &aMessage, LogTime const mPauseLength) noexcept {
       bool result;
       // Safe to call empty because there will be only one consumer.
-      if(mQueue.empty() &&
-        (!mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mPauseLength), [this]{return mNotified == true;})
-        && !mNotified )) {  // This check makes the lock_guard on notifying unnecessary,
-        // because I don't care if I get in right during waiting or just at the beginning of next check.
+      if(mQueue.empty() && !mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mPauseLength), [this]{return mNotified == true;})) {
         result = false;
       }
       else {

@@ -170,9 +170,16 @@ Each value is the average time required for _one_ log call in nanoseconds.
 
 |Scenario                 |Unknown `TaskId` (ns)|Provided `TaskId` (ns)|
 |-------------------------|--------------------:|---------------------:|
-|direct                   |250                  |160                   |
+|direct                   |250                  |190                   |
 |Constant string (no copy)|500                  |430                   |
 |Transient string (copy)  |580                  |500                   |
+
+Here are benchmark results of atomic logging `int32_t` values, measured on 2097152 iterations. Note that this does not include offline buffer sending, so it is the same for any logger mode:
+
+|Scenario                 |Atomic (ns)|
+|-------------------------|----------:|
+|any                      |7          |
+
 
 ## Space requirements
 
@@ -205,27 +212,6 @@ No floating point arithmetics in the application and the support is turned off i
 |off           |0      |0     |0      |
 |MessageVariant|6440   |12    | 80    |
 |MessageCompact|6192   |12    | 80    |
-
-### x86 STL with floating point, only chained log
-
-Not much point to calculate size growth here, but why not? Source is *test-sizes-stdthreadostream.cpp*
-
-|Scenario      |   Text|  Data|    BSS|
-|--------------|------:|-----:|------:|
-|direct        |11835  | 273  |492    |
-|off           |0      |0     |0      |
-|MessageVariant|22803  | 457  |892    |
-|MessageCompact|21175  |457   | 892   |
-
-### x86 STL with floating point, only atomic log
-
-Not much point to calculate size growth here, but why not? Source is *test-sizes-stdthreadostream.cpp*
-
-|Scenario      |   Text|  Data|    BSS|
-|--------------|------:|-----:|------:|
-|direct        |9536   | 233  |516    |
-|off           |0      |0     |0      |
-|multithreaded |20467  |457   | 916   |
 
 ## API
 

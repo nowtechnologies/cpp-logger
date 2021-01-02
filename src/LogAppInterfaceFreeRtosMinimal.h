@@ -45,16 +45,18 @@ public:
   };
 
 private:
-  inline static constexpr char csUnknownTaskName[]     = "UNKNOWN";
-  inline static constexpr char csIsrTaskName[]         = "ISR";
-  inline static constexpr char csTransmitterTaskName[] = "logTx";
-  inline static constexpr TickType_t csRegistrationMutexTimeout = portMAX_DELAY;
+  inline static constexpr char csUnknownTaskName[]       = "UNKNOWN";
+  inline static constexpr char csIsrTaskName[]           = "ISR";
+  inline static constexpr char csTransmitterTaskName[]   = "logTx";
+  static constexpr TickType_t csRegistrationMutexTimeout = portMAX_DELAY;
+  static constexpr TickType_t csAtomicSendTimeout        = portMAX_DELAY;
 
   inline static std::array<TaskHandle_t, csMaxTaskCount> sTaskHandles;
   inline static TaskId sPreviousTaskId = csFirstNormalTaskId - 1u;
   inline static SemaphoreHandle_t sRegistrationMutex;
+  inline static std::atomic<TaskHandle_t> sTaskToNotify;
   inline static TaskHandle_t sTransmitterTask;
-  
+
   AppInterfaceFreeRtosMinimal() = delete;
 
 public:
@@ -158,6 +160,15 @@ public:
   }
 
   static void unlock() noexcept { // Now don't care.
+  }
+
+  static void atomicBufferSendWait() noexcept {
+    sTaskToNotify = xTaskGetCurrentTaskHandle();
+    ulTaskNotifyTake(pdTRUE, csAtomicSendTimeout);
+  }
+
+  static void atomicBufferSendFinished() noexcept {
+    xTaskNotifyGive(sTaskToNotify);
   }
 
   static void error(Exception const aError) {

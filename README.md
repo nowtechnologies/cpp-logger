@@ -191,27 +191,36 @@ For desktop, I used clang version 10.0.0 on x64. For embedded, I used arm-none-e
 - logging with queue using MessageVariant (for multithreaded applications)
 - logging with queue using MessageCompact (for multithreaded applications)
 
-### FreeRTOS with floating point STALE
+### FreeRTOS with floating point
 
 To obtain net results, I put some floating-point operations in the application *test-sizes-freertosminimal-float.cpp* because a real application would use them apart of logging. 
 
-|Scenario      |   Text|  Data|    BSS|
-|--------------|------:|-----:|------:|
-|direct        |13152  | 108  |52     |
-|off           |0      |0     |0      |
-|MessageVariant|15304  |112   | 76    |
-|MessageCompact|15024  |112   | 76    |
+|Atomic|Mode              |   Text|  Data|    BSS|
+|------|------------------|------:|-----:|------:|
+|-     |off               |0      |0     |0      |
+|off   |direct            |13072  |108   |56     |
+|on    |direct            |13400  |108   |80     |
+|off   |multitask, variant|15272  |108   |88     |
+|on    |multitask, variant|16000  |108   |112    |
+|off   |multitask, compact|14984  |108   |88     |
+|on    |multitask, compact|15712  |108   |112    |
 
-### FreeRTOS without floating point STALE
+### FreeRTOS without floating point
 
-No floating point arithmetics in the application and the support is turned off in the logger. Source is *test-sizes-freertosminimal-nofloat.cpp*
+No floating point arithmetics in the application and the support is turned off in the logger. Source is *test-sizes-freertosminimal-nofloat.cpp*. Note , only this table contains values from the _only atomic logging_ scenario, since atomic logging assumes only integral types.
 
-|Scenario      |   Text|  Data|    BSS|
-|--------------|------:|-----:|------:|
-|direct        |4303   | 8    |56     |
-|off           |0      |0     |0      |
-|MessageVariant|6440   |12    | 80    |
-|MessageCompact|6192   |12    | 80    |
+|Atomic|Mode              |   Text|  Data|    BSS|
+|------|------------------|------:|-----:|------:|
+|-     |off               |0      |0     |0      |
+|only  |direct *          |3704   |4     |72     |
+|off   |direct            |4212   |8     |60     |
+|on    |direct            |4540   |8     |76     |
+|off   |multitask, variant|6412   |8     |84     |
+|on    |multitask, variant|7140   |8     |108    |
+|off   |multitask, compact|6140   |8     |84     |
+|on    |multitask, compact|6868   |8     |108    |
+
+* = when only using atomic logging, multitasking mode is meaningless.
 
 ## API
 
@@ -308,7 +317,7 @@ Explanation of configuration parameters:
 |`typename tAppInterface`                                  |_Queue_                  |The _app interface_ type to use.|
 |`size_t tQueueSize`                                       |_Queue_                  |Number of items the queue should hold. This applies to the master queue and to the aggregated capacity of the per-task queues.|
 |`typename tAppInterface`                                  |`AtomicBufferOperational`|The _app interface_ to use.|
-|`typename tAtomicBufferType`                              |`AtomicBufferOperational`|The integral type to log as atomic.|
+|`typename tAtomicBufferType`                              |`AtomicBufferOperational`|The type to log as atomic, only integral types are allowed.|
 |`tAtomicBufferSizeExponent`                               |`AtomicBufferOperational`|Exponent of the buffer size (base of the power is 2). For numeric reasons, the buffer size is always a power of 2.|
 |`tAtomicBufferType tInvalidValue`                         |`AtomicBufferOperational`|Invalid value, which won't be sent when all the buffer contents are being sent.|
 |`typename tQueue`                                         |`Log`                    |The _Queue_ type to use.|

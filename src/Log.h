@@ -6,6 +6,7 @@
 #include "PoolAllocator.h"
 #include <type_traits>
 #include <algorithm>
+#include <string>
 #include <atomic>
 #include <limits>
 #include <array>
@@ -247,6 +248,11 @@ private:
 
     LogShiftChainHelperBackgroundSend& operator<<(char const * const aValue) noexcept {
       return sendCharPointer(aValue);
+    }
+
+    LogShiftChainHelperBackgroundSend& operator<<(std::string const &aValue) noexcept {
+      mNextFormat = LogFormatConfig::St;
+      return sendCharPointer(aValue.c_str());
     }
 
     LogShiftChainHelperBackgroundSend& operator<<(LogFormat const aFormat) noexcept {
@@ -614,7 +620,7 @@ public:
 
   static LogShiftChainHelper i(LogTopic const aTopic) noexcept {
     if constexpr(!csShutdownLog) {
-      if(sRegisteredTopics[aTopic] != nullptr) {
+      if(aTopic >= 0 && sRegisteredTopics[aTopic] != nullptr) {
         TaskId const taskId = tAppInterface::getCurrentTaskId();
         return sendHeader<LogShiftChainHelper>(taskId, sRegisteredTopics[aTopic]);
       }
@@ -629,7 +635,7 @@ public:
 
   static LogShiftChainHelper i(LogTopic const aTopic, TaskId const aTaskId) noexcept {
     if constexpr(!csShutdownLog) {
-      if(sRegisteredTopics[aTopic] != nullptr) {
+      if(aTopic >= 0 && sRegisteredTopics[aTopic] != nullptr) {
         return sendHeader<LogShiftChainHelper>(aTaskId, sRegisteredTopics[aTopic]);
       }
       else {
@@ -663,7 +669,7 @@ public:
 
   static LogShiftChainHelper n(LogTopic const aTopic) noexcept {
     if constexpr(!csShutdownLog) {
-      if(sRegisteredTopics[aTopic] != nullptr) {
+      if(aTopic >= 0 && sRegisteredTopics[aTopic] != nullptr) {
         return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
       }
       else {
@@ -677,7 +683,7 @@ public:
 
   static LogShiftChainHelper n(LogTopic const aTopic, TaskId const aTaskId) noexcept {
     if constexpr(!csShutdownLog) {
-      if(sRegisteredTopics[aTopic] != nullptr) {
+      if(aTopic >= 0 && sRegisteredTopics[aTopic] != nullptr) {
         return LogShiftChainHelper{aTaskId};
       }
       else {

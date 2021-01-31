@@ -133,6 +133,10 @@ This is a minimal implementation for STM32 UART using blocking HAL transmission.
 
 It is a simple std::ostream wrapper.
 
+### SenderRos2
+
+A simple ROS2 log wrapper.
+
 ### AtomicBufferOperational
 
 Normal cross-platform implementaiton.
@@ -247,6 +251,7 @@ As all major coding standards suggest, use of integer types with indeterminate s
 |`char`         |no                         |This and the strings support only plain old 8-bit ASCII.|
 |`char const *` |for no prefix              |Can be of arbitrary length for string constants.|
 |`char const *` |for `LC::St` prefix        |Only a limited length of _payload size_ * 255 characters can be transferred from a transient string.|
+|`std::string`  |no                         |Implicitely adds `LC::St` prefix, since `std::string` instances are usually mutable.|
 
 64-bit integer types require emulation on 32-bit architectures. By default, `LogConverterCustomText`'s templated conversion routine use 32-bit numbers to gain speed. Using 64-bit operands instantiates the 64-bit emulated routines as well, which takes extra flash space on embedded.
 
@@ -329,7 +334,7 @@ Explanation of configuration parameters:
 |`TaskRepresentation tTaskRepresentation`                  |`Config`                 |One of `cNone` (for omitting it), `cId` (for numeric task ID), `cName` (for task name).|
 |`size_t tDirectBufferSize`                                |`Config`                 |When 0, the given _Queue_ will be used. Otherwise, it is the size of a buffer on stack to hold a converted item before sending it.|
 |`int32_t tRefreshPeriod`                                  |`Config`                 |Timeout in implementation-defined unit (usually ms) for waiting on the queue before sending what already present.|
-|`ErrorLevel tErrorLevel`                                  |`Config`                    |The application log level with the default value `ErrorLevel::All`.|
+|`ErrorLevel tErrorLevel`                                  |`Config`                 |The application log level with the default value `ErrorLevel::All`.|
 |`LogFormat atomicFormat`                                  |`LogFormatConfig`        |Format used for converting the bulk data in the _AtomicBuffer_.
 |`LogFormat taskIdFormat`                                  |`LogFormatConfig`        |Format of task ID to use when `tTaskRepresentation == TaskRepresentation::cId`.|
 |`LogFormat tickFormat`                                    |`LogFormatConfig`        |Format for displaying the timestamp in the header, if any. Should be `LogConfig::cInvalid` to disable tick output.|

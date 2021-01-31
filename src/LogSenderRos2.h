@@ -8,7 +8,6 @@
 
 namespace nowtech::log {
 
-// The buffer it gets in iterators MUST NOT contain %. Otherwise undefined behavior occurs.
 template<typename tAppInterface, typename tConverter, size_t tTransmitBufferSize, typename tAppInterface::LogTime tTimeout, int tSimulatedRos2Loglevel>
 class SenderRos2 final {
 public:

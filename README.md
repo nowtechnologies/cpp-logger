@@ -135,7 +135,7 @@ It is a simple std::ostream wrapper.
 
 ### SenderRos2
 
-A simple ROS2 log wrapper.
+A simple ROS2 log wrapper. This wrapper has its own loglevels and every property defined here. However, due to the architecture of this library this wrapper uses only a compile-time hardwired ROS2 loglevel.
 
 ### AtomicBufferOperational
 

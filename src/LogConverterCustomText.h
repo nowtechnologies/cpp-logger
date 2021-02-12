@@ -135,13 +135,17 @@ public:
     appendSpace();
   }
 
-  void convert(std::array<char, tMessage::csPayloadSize> const &aValue, uint8_t const, uint8_t const aFill) noexcept {
-    append(aValue.data());
+  void convert(char const * const aValue, uint8_t const aFill) noexcept {   // extra function for MessageCompact
+    append(aValue);
     if(aFill < LogFormat::csFillValueStoreString) {   // Antipattern to use the fill for other purposes, but we go for space saving.
       appendSpace();
     }
     else { // nothing to do
     }
+  }
+
+  void convert(std::array<char, tMessage::csPayloadSize> const &aValue, uint8_t const, uint8_t const aFill) noexcept {
+    convert(aValue.data(), aFill);
   }
 
   void terminateSequence() noexcept {

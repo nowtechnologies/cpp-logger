@@ -11,7 +11,7 @@
 namespace nowtech::log {
 
 // For slow transmission medium like UART on embedded this class could implement double buffering.
-template<typename tAppInterface, typename tConverter, size_t tTransmitBufferSize, typename tAppInterface::LogTime tTimeout>
+template<typename tAppInterface, typename tConverter, size_t tTransmitBufferSize>
 class SenderStmHalMinimal final {
 public:
   using tAppInterface_   = tAppInterface;
@@ -42,7 +42,7 @@ public:
 
   static void send(char const * const aBegin, char const * const aEnd) {
     if(sSerialDescriptor != nullptr) {
-      HAL_UART_Transmit(sSerialDescriptor, reinterpret_cast<uint8_t*>(const_cast<char*>(aBegin)), aEnd - aBegin, tTimeout);
+      HAL_UART_Transmit_DMA(sSerialDescriptor, reinterpret_cast<uint8_t*>(const_cast<char*>(aBegin)), aEnd - aBegin);
     }
     else { // nothing to do
     }

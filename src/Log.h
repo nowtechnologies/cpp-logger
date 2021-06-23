@@ -675,7 +675,7 @@ private:
     bool ready = false;
     auto sequence = aMessage.getMessageSequence();
     if(list->empty()) {
-      if(sequence <= csSequence1 && sAllocator->hasFree()) {
+    	if(sequence <= csSequence1){
         ready = push(*list, aMessage, sequence);
       }
       else { // nothing to do
@@ -683,7 +683,7 @@ private:
     }
     else {
       auto lastSequence = list->back().getMessageSequence();
-      if((sequence == csSequence0 || sequence == lastSequence + 1u) && sAllocator->hasFree()) {
+      if((sequence == csSequence0 || sequence == lastSequence + 1u)) {
         ready = push(*list, aMessage, sequence);
       }
       else {

@@ -6,7 +6,7 @@
 #define NOWTECH_LOG_SENDER_STM_HAL_MINIMAL
 
 #include "Log.h"
-#include "stm32f1xx_hal.h"
+#include "main.h"
 
 namespace nowtech::log {
 

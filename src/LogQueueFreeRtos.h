@@ -8,7 +8,7 @@
 #include <cstddef>
 #include "FreeRTOS.h"
 #include "queue.h"
-#include "stm32f1xx_hal.h"
+#include "main.h"
 
 namespace nowtech::log {
 

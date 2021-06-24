@@ -237,6 +237,12 @@ using LogQueue = nowtech::log::QueueFreeRtos<LogMessage, LogAppInterfaceFreeRtos
 using Log = nowtech::log::Log<LogQueue, LogSender, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod>;
 ```
 
+Define logger task with the following content:
+```C++
+extern "C" void logTransmitterTask(void* aFunction){
+  static_cast<Log*>(aFunction)->transmitterTaskFunction();
+}
+
 Explanation of configuration parameters:
 |Name in the library source                                |Goes in                  |Remark             |
 |----------------------------------------------------------|-------------------------|-------------------|
@@ -295,6 +301,18 @@ Log::registerTopic(nowtech::LogTopics::level1, "level1");
 Log::registerTopic(nowtech::LogTopics::level2, "level2");
 Log::registerTopic(nowtech::LogTopics::level3, "level3");
 #endif
+```
+
+Sample initialization using FreeRTOS: 
+```C++
+void nowtech::Logger::init() noexcept{
+  nowtech::log::LogConfig logConfig;
+  logConfig.allowRegistrationLog = true;
+  LogSender::init(&huart1);
+  Log::init(logConfig, cgLogTaskStackSize, cgLogTaskPriority);
+  Log::registerTopic(nowtech::LogTopics::level1, "level1");
+  Log::registerCurrentTask();
+}
 ```
 
 ### Logging

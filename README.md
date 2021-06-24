@@ -306,8 +306,9 @@ Log::registerTopic(nowtech::LogTopics::level3, "level3");
 
 Sample initialization using FreeRTOS: 
 ```C++
+static nowtech::log::LogConfig logConfig;
+
 void nowtech::Logger::init() noexcept{
-  nowtech::log::LogConfig logConfig;
   logConfig.allowRegistrationLog = true;
   LogSender::init(&huart1);
   Log::init(logConfig, cgLogTaskStackSize, cgLogTaskPriority);

@@ -242,6 +242,7 @@ Define logger task with the following content:
 extern "C" void logTransmitterTask(void* aFunction){
   static_cast<Log*>(aFunction)->transmitterTaskFunction();
 }
+```
 
 Explanation of configuration parameters:
 |Name in the library source                                |Goes in                  |Remark             |

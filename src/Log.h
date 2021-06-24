@@ -646,7 +646,7 @@ private:
     }
     return result;
   }
-
+public:
   static void transmitterTaskFunction() noexcept {
     while(sKeepAliveTask || !tQueue::empty()) {
       tMessage message;
@@ -669,7 +669,7 @@ private:
     }
     tAppInterface::finish();
   }
-
+private:
   static void checkAndInsertAndTransmit(TaskId const aTaskId, tMessage const &aMessage) noexcept {
     auto list = (*sMessageQueues)[aTaskId];
     bool ready = false;

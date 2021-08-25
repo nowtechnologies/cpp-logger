@@ -19,7 +19,7 @@ public:
 
 private:
   class FreeRtosQueue final {
-    boost::lockfree::queue<tMessage> mQueue;
+    boost::lockfree::queue<tMessage, boost::lockfree::capacity<tQueueSize>> mQueue;
     std::atomic<bool>                mNotified;
     std::mutex                       mMutex;
     std::unique_lock<std::mutex>     mLock;
@@ -28,8 +28,7 @@ private:
   public:
     /// First implementation, we assume we have plenty of memory.
     FreeRtosQueue() noexcept
-      : mQueue(tQueueSize)
-      , mLock(mMutex) {
+      : mLock(mMutex) {
       mNotified = false;
     }
 

@@ -80,7 +80,7 @@ private:
 
   inline static FreeRtosQueue sQueue;
 
-  QueueStdBoost() = delete;
+  QueueStdCircular() = delete;
 
 public:
   static void init() { // nothing to do

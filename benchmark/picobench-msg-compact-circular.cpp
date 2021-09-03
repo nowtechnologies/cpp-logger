@@ -5,8 +5,7 @@
 #include "LogAppInterfaceStd.h"
 #include "LogConverterCustomText.h"
 #include "LogSenderStdOstream.h"
-#include "LogSenderVoid.h"
-#include "LogQueueStdBoost.h"
+#include "LogQueueStdCircular.h"
 #include "LogQueueVoid.h"
 #include "LogMessageCompact.h"
 #include "LogMessageVariant.h"
@@ -40,26 +39,41 @@ constexpr typename LogAppInterface::LogTime cgRefreshPeriod = 444;
 using LogMessage = nowtech::log::MessageCompact<cgPayloadSize, cgSupportFloatingPoint>;
 using LogConverter = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
 using LogSender = nowtech::log::SenderStdOstream<LogAppInterface, LogConverter, cgTransmitBufferSize, cgTimeout>;
-using LogQueue = nowtech::log::QueueStdBoost<LogMessage, LogAppInterface, cgQueueSize>;
+using LogQueue = nowtech::log::QueueStdCircular<LogMessage, LogAppInterface, cgQueueSize>;
 using LogAtomicBuffer = nowtech::log::AtomicBufferOperational<LogAppInterface, AtomicBufferType, cgAtomicBufferExponent, cgAtomicBufferInvalidValue>;
 using LogConfig = nowtech::log::Config<cgAllowRegistrationLog, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod, cgErrorLevel>;
 using Log = nowtech::log::Log<LogQueue, LogSender, LogAtomicBuffer, LogConfig>;
 
 nowtech::log::TaskId gTaskId;
 
-void nowtechLogRef(picobench::state& s) {
+void nowtechLogRefTaskId(picobench::state& s) {
   for (auto _ : s) {
     Log::i<Log::info>(gTaskId) << "Info message" << Log::end;
   }
 }
-PICOBENCH(nowtechLogRef);
+PICOBENCH(nowtechLogRefTaskId);
 
-void nowtechLogCopy(picobench::state& s) {
+void nowtechLogCopyTaskId(picobench::state& s) {
   for (auto _ : s) {
     Log::i<Log::info>(gTaskId) << LC::St << "Info message" << Log::end;
   }
 }
-PICOBENCH(nowtechLogCopy);
+PICOBENCH(nowtechLogCopyTaskId);
+
+void nowtechLogRefNoTaskId(picobench::state& s) {
+  for (auto _ : s) {
+    Log::i<Log::info>() << "Info message" << Log::end;
+  }
+}
+PICOBENCH(nowtechLogRefNoTaskId);
+
+void nowtechLogCopyNoTaskId(picobench::state& s) {
+  for (auto _ : s) {
+    Log::i<Log::info>() << LC::St << "Info message" << Log::end;
+  }
+}
+PICOBENCH(nowtechLogCopyNoTaskId);
+
 
 int main(int argc, char* argv[])
 {

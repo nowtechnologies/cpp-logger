@@ -121,6 +121,10 @@ It uses the FreeRTOS' built-in queue, so no locking is needed on sending. Sendin
 
 This one uses a multi-producer multi-consumer lockfree queue of Boost, so no locking is needed either.
 
+### QueueStdCircular
+
+This one uses a simple circular buffer with `std::lock_guard`.
+
 ### SenderVoid
 
 Emply implementation for the case when all the log calls have to be eliminated from the binary. This happens at gcc and clang optimization levels -Os, -O1, -O2 and -O3. The application can use a template metaprogramming technique to declare a Log using this as the appropriate parameter, so no #ifdef is needed.
@@ -164,19 +168,19 @@ public:
 
 ## Benchmarks
 
-I used [picobench](https://github.com/iboB/picobench) for benchmarks using the supplied bechmark apps. Here are some averaged results measured on 8192 iterations on my _Intel(R) Xeon(R) CPU E31220L @ 2.20GHz_. Compiled using `clang++ -O2`. There were no significant differences for `MessageVariant` or `MessageCompact`. Log activity was
+I used [picobench](https://github.com/iboB/picobench) for benchmarks using the supplied bechmark apps. Here are some averaged results measured on 8192 iterations on my _Intel(R) Xeon(R) CPU E31220L @ 2.20GHz_. Compiled using `clang++ -O2`. There were no significant differences for `MessageVariant` or `MessageCompact`, or whether the task ID was provided or not. Log activity was
 - print header
   - print task name
   - print timestamp
 - print the logged string
 
-Each value is the average time required for _one_ log call in nanoseconds.
+Each value is the average time required for _one_ log call in nanoseconds. Each result is an average of 8 runs, each having 262144 iterations.
 
-|Scenario                 |Unknown `TaskId` (ns)|Provided `TaskId` (ns)|
-|-------------------------|--------------------:|---------------------:|
-|direct                   |250                  |190                   |
-|Constant string (no copy)|500                  |430                   |
-|Transient string (copy)  |580                  |500                   |
+|Scenario                 |Constant string (no copy)|Transient string (copy)|
+|-------------------------|------------------------:|----------------------:|
+|direct                   |230                      |230                    |
+|Lockfree queue           |310                      |500                    |
+|Circular buffer and lock |430                      |590                    |
 
 Here are benchmark results of atomic logging `int32_t` values, measured on 2097152 iterations. Note that this does not include offline buffer sending, so it is the same for any logger mode:
 

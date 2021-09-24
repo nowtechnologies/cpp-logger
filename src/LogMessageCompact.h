@@ -28,10 +28,9 @@ private:
   static constexpr size_t csOffsetTaskId          = csOffsetFill + sizeof(uint8_t);
   static constexpr size_t csOffsetMessageSequence = csOffsetTaskId + sizeof(TaskId);
   static constexpr size_t csOffsetType            = csOffsetMessageSequence + sizeof(MessageSequence);
-  
-  uint8_t mData[csTotalSize];
 
 public:
+  uint8_t mData[csTotalSize];
   MessageCompact() = default;
   MessageCompact(MessageCompact const &) = default;
   MessageCompact(MessageCompact &&) = default;

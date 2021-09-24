@@ -30,9 +30,9 @@ private:
   SenderStmHalMinimal() = delete;
 
 public:
-  static void init(UART_HandleTypeDef * const aUart) {
+  static void init(UART_HandleTypeDef * const aUart, uint8_t *aBuffer) {
     sSerialDescriptor = aUart;
-    sTransmitBuffer = tAppInterface::template _newArray<ConversionResult>(tTransmitBufferSize);
+    sTransmitBuffer = reinterpret_cast<ConversionResult*>(aBuffer);
     sBegin = sTransmitBuffer;
     sEnd = sTransmitBuffer + tTransmitBufferSize;
   }

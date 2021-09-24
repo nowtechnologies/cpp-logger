@@ -42,7 +42,10 @@ public:
 
   static void send(char const * const aBegin, char const * const aEnd) {
     if(sSerialDescriptor != nullptr) {
-      HAL_UART_Transmit_DMA(sSerialDescriptor, reinterpret_cast<uint8_t*>(const_cast<char*>(aBegin)), aEnd - aBegin);
+      if(static_cast<size_t>(aEnd - aBegin) < tTransmitBufferSize) {
+        HAL_UART_Transmit(sSerialDescriptor, reinterpret_cast<uint8_t*>(sTransmitBuffer), aEnd - aBegin, 100);
+      }
+
       static constexpr uint32_t cTimeout = 10000U; //1s
       uint32_t timer = 0U;
       while(((HAL_UART_GetState(sSerialDescriptor) == HAL_UART_STATE_BUSY_TX) ||

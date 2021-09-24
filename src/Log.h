@@ -378,6 +378,7 @@ public:
     if constexpr(!csShutdownLog) {
       sConfig = &aConfig;
       if constexpr(csSendInBackground) {
+        tAppInterface::init(transmitterTaskFunction, std::forward<tTypes>(aArgs)...);
         std::byte experiment[sizeof(tMessage) + csListItemOverhead];
         tMessage example;
         size_t nodeSize = memory::AllocatorBlockGauge<std::list<tMessage>>::getNodeSize(experiment, example);
@@ -389,11 +390,12 @@ public:
           messageQueues[i] = tAppInterface::template _new<MessageQueue>(*sAllocator);
         }
         sKeepAliveTask = true;
-        tAppInterface::init(transmitterTaskFunction, std::forward<tTypes>(aArgs)...);
+
+        tQueue::init();
       } else {
         tAppInterface::init();
       }
-      tQueue::init();
+
       sNextFreeTopic = csFirstFreeTopic;
       std::fill_n(sRegisteredTopics.begin(), tMaxTopicCount, nullptr);
     }

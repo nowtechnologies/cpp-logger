@@ -29,8 +29,18 @@ private:
   static constexpr UINT cMessageSize  = sizeof(tMessage)/sizeof(ULONG)+1;
 public:
   static void init() { // nothing to do
-     void *queueBufferPnt = tOnlyAllocator::_newArray<uint8_t>(csQueueSize * cMessageSize * sizeof(ULONG));
-      UINT status = tx_queue_create(
+    void *queueBufferPnt;
+    UINT status;
+     status = tx_byte_allocate(
+         tAppInterface::getPool(),
+         &queueBufferPnt,
+         csQueueSize * cMessageSize * sizeof(ULONG),
+         TX_NO_WAIT);
+     if(status != TX_SUCCESS){
+       Error_Handler();
+     }
+
+       status = tx_queue_create(
           &sQueue,
           cLogQueName,
           5, //cMessageSize,

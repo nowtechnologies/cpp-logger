@@ -170,6 +170,10 @@ public:
 	  }
   }
 
+  static void sleep(const TickType_t aTicksToDelay) {
+    vTaskDelay(aTicksToDelay);
+  }
+
   template<typename tClass, typename ...tParameters>
   static tClass* _new(tParameters... aParameters) {
     return ::new tClass(aParameters...);

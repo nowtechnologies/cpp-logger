@@ -187,7 +187,7 @@ public:
   }
 
   static LogTime getLogTime() noexcept {
-    return TX_TIMER_TICKS_PER_SECOND  * tx_time_get();
+    return tx_time_get(); //Log time in [ms]
   }
 
   static void finish() noexcept { // We assume everything runs forever.
@@ -215,6 +215,10 @@ public:
   static void fatalError(Exception const) {
 	  while(true) {
 	  }
+  }
+
+  static void sleep(const ULONG aTimerTicks){
+    tx_thread_sleep(aTimerTicks);
   }
 
   template<typename tClass, typename ...tParameters>

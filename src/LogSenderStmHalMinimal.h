@@ -43,6 +43,9 @@ public:
   static void send(char const * const aBegin, char const * const aEnd) {
     if(sSerialDescriptor != nullptr) {
       if(static_cast<size_t>(aEnd - aBegin) < tTransmitBufferSize) {
+        if(aBegin != sTransmitBuffer){
+          memcpy(sTransmitBuffer, aBegin, aEnd-aBegin);
+        }
         HAL_UART_Transmit(sSerialDescriptor, reinterpret_cast<uint8_t*>(sTransmitBuffer), aEnd - aBegin, 100);
       }
 

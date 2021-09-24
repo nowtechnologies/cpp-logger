@@ -9,21 +9,11 @@
 #include <array>
 #include "main.h"
 #include "tx_api.h"
-#include "OnlyAllocate.h"
 
 extern "C" void logTransmitterTask(ULONG arg);
 
-class Interface final {
-public:
-  static void badAlloc() {
-    Error_Handler();
-  }
-};
-
-typedef nowtech::memory::OnlyAllocate<Interface> tOnlyAllocator;
-
 namespace nowtech::log {
-
+static TX_BYTE_POOL gPool;
 
 template<TaskId tMaxTaskCount, bool tLogFromIsr, size_t tTaskShutdownPollPeriod, uint32_t tThreadStackSize>
 class AppInterfaceAzureRtosMinimal final {
@@ -75,16 +65,37 @@ public:
     }
   }
 
-  static void init(void (*aFunction)(), uint32_t const aStackDepth, uint32_t const aPriority) {
+  static void init(void (*aFunction)(), uint32_t const aStackDepth, uint32_t const aPriority, uint8_t* aPoolBuffer, ULONG aPoolBufferSize) {
     init();
     static constexpr ULONG cEntryInput = 0U;
-    void *sLoggerThreadStack = tOnlyAllocator::_newArray<uint8_t>(tThreadStackSize);
-    UINT status = tx_thread_create(
+    //void *sLoggerThreadStack = tOnlyAllocator::_newArray<uint8_t>(tThreadStackSize);
+    CHAR cPoolName[] = "LoggerBytePool";
+    UINT status = tx_byte_pool_create(
+        &gPool,
+        cPoolName,
+        aPoolBuffer,
+        aPoolBufferSize);
+
+    if(status != TX_SUCCESS){
+      Error_Handler();
+    }
+
+    void *sLoggerThreadStack;
+    status = tx_byte_allocate(
+        &gPool,
+        &sLoggerThreadStack,
+        aStackDepth,
+        TX_NO_WAIT);
+    if(status != TX_SUCCESS){
+      Error_Handler();
+    }
+
+    status = tx_thread_create(
         &sTransmitterTask,
         csTransmitterTaskName,
         &logTransmitterTask,
         cEntryInput,
-        sLoggerThreadStack,
+        aPoolBuffer,
         aStackDepth,
         aPriority,
         aPriority,
@@ -94,6 +105,10 @@ public:
     if(status != TX_SUCCESS){
       Error_Handler();
     }
+  }
+
+  static TX_BYTE_POOL* getPool() {
+    return &gPool;
   }
 
   static void done() { // We assume it runs forever.
@@ -251,7 +266,15 @@ private:
 }
 
 inline void *operator new(size_t size) {
- void* retval = tOnlyAllocator::_newArray<uint8_t>(size) ;
+  void* retval = nullptr;
+  UINT status = tx_byte_allocate(
+      &nowtech::log::gPool,
+      &retval,
+      size,
+      TX_NO_WAIT);
+  if(status != TX_SUCCESS){
+    Error_Handler();
+  }
  return retval;
 }
 
@@ -264,7 +287,16 @@ inline void operator delete(void *aPointer, size_t) noexcept {
 }
 
 inline void *operator new[](size_t size) {
-  return tOnlyAllocator::_newArray<uint8_t>(size);
+  void* retval = nullptr;
+  UINT status = tx_byte_allocate(
+      &nowtech::log::gPool,
+      &retval,
+      size,
+      TX_NO_WAIT);
+  if(status != TX_SUCCESS){
+    Error_Handler();
+  }
+  return retval;
 }
 
 inline void operator delete[](void *aPointer) noexcept {

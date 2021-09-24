@@ -47,7 +47,9 @@ public:
       uint32_t timer = 0U;
       while(((HAL_UART_GetState(sSerialDescriptor) == HAL_UART_STATE_BUSY_TX) ||
     		  (HAL_UART_GetState(sSerialDescriptor) == HAL_UART_STATE_BUSY_TX_RX)) && (timer < cTimeout)) {
-          vTaskDelay(1U);
+        //TODO implement common task delay function
+        //vTaskDelay(1U);
+        tx_thread_sleep(1U);
           timer++;
       }
     }

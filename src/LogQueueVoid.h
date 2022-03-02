@@ -5,12 +5,14 @@
 
 namespace nowtech::log {
 
-template<typename tMessage, typename tAppInterface, size_t tQueueSize>
+template<typename tMessage, typename tAppInterface>
 class QueueVoid final {
 public:
   using tMessage_ = tMessage;
   using tAppInterface_ = tAppInterface;
   using LogTime = typename tAppInterface::LogTime;
+
+  static constexpr size_t csQueueSize = 0u;
 
 private:
   QueueVoid() = delete;

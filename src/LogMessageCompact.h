@@ -108,7 +108,7 @@ public:
       aConverter.convert(value, base, fill);
     }
     else if(type == Type::cStoredChars) {
-      aConverter.convert(reinterpret_cast<char const*>(mData + csOffsetPayload), base, fill);
+      aConverter.convert(reinterpret_cast<char const*>(mData + csOffsetPayload), fill);
     }
     else {
       if constexpr(csPayloadSize >= sizeof(int64_t) || sizeof(char*) > sizeof(int32_t)) {

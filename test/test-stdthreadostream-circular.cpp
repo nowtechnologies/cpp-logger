@@ -24,16 +24,18 @@
 #include "LogAppInterfaceStd.h"
 #include "LogConverterCustomText.h"
 #include "LogSenderStdOstream.h"
-#include "LogQueueVoid.h"
+#include "LogQueueStdCircular.h"
+#include "LogMessageCompact.h"
 #include "LogMessageVariant.h"
 #include "Log.h"
 
 #include <iostream>
 #include <thread>
+#include <cstring>
 
-// clang++ -std=c++20 -Isrc -Icpp-memory-manager test/test-stdostream.cpp -lpthread -o test-stdostream
+// clang++ -std=c++20 -Isrc -Icpp-memory-manager test/test-stdthreadostream.cpp -lpthread -o test-stdthreadostream
 
-constexpr size_t cgThreadCount = 1;
+constexpr size_t cgThreadCount = 4;
 
 char cgThreadNames[10][10] = {
   "thread_0",
@@ -70,26 +72,26 @@ constexpr bool cgSupportFloatingPoint = true;
 constexpr size_t cgQueueSize = 444u;
 constexpr nowtech::log::LogTopic cgMaxTopicCount = 2;
 constexpr nowtech::log::TaskRepresentation cgTaskRepresentation = nowtech::log::TaskRepresentation::cName;
-constexpr size_t cgDirectBufferSize = 43u;
+constexpr size_t cgDirectBufferSize = 0u;
 constexpr nowtech::log::ErrorLevel cgErrorLevel = nowtech::log::ErrorLevel::Error;
 
 using LogAppInterface = nowtech::log::AppInterfaceStd<cgMaxTaskCount, cgLogFromIsr, cgTaskShutdownSleepPeriod>;
 constexpr typename LogAppInterface::LogTime cgTimeout = 123u;
 constexpr typename LogAppInterface::LogTime cgRefreshPeriod = 444;
-using LogMessage = nowtech::log::MessageVariant<cgPayloadSize, cgSupportFloatingPoint>;
+using LogMessage = nowtech::log::MessageCompact<cgPayloadSize, cgSupportFloatingPoint>;
 using LogConverterCustomText = nowtech::log::ConverterCustomText<LogMessage, cgArchitecture64, cgAppendStackBufferSize, cgAppendBasePrefix, cgAlignSigned>;
 using LogSenderStdOstream = nowtech::log::SenderStdOstream<LogAppInterface, LogConverterCustomText, cgTransmitBufferSize, cgTimeout>;
-using LogQueueVoid = nowtech::log::QueueVoid<LogMessage, LogAppInterface>;
+using LogQueueStdCircular = nowtech::log::QueueStdCircular<LogMessage, LogAppInterface, cgQueueSize>;
 using LogAtomicBuffer = nowtech::log::AtomicBufferOperational<LogAppInterface, AtomicBufferType, cgAtomicBufferExponent, cgAtomicBufferInvalidValue>;
 using LogConfig = nowtech::log::Config<cgAllowRegistrationLog, cgMaxTopicCount, cgTaskRepresentation, cgDirectBufferSize, cgRefreshPeriod, cgErrorLevel>;
-using Log = nowtech::log::Log<LogQueueVoid, LogSenderStdOstream, LogAtomicBuffer, LogConfig>;
+using Log = nowtech::log::Log<LogQueueStdCircular, LogSenderStdOstream, LogAtomicBuffer, LogConfig>;
 
 void delayedLog(size_t n) {
   Log::registerCurrentTask(cgThreadNames[n]);
-  Log::i(nowtech::LogTopics::system) << n << ": " << 0 << Log::end;
-  for(int64_t i = 1; i < 3; ++i) {
+  Log::i(nowtech::LogTopics::system) << static_cast<uint16_t>(n) << ": " << static_cast<uint16_t>(0) << Log::end;
+  for(int64_t i = 1; i < 7; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1 << i));
-    Log::i(nowtech::LogTopics::system) << n << ". thread delay logarithm: " << LC::X1 << i << Log::end;
+    Log::i(nowtech::LogTopics::system) << static_cast<uint16_t>(n) << "thread delay logarithm: " << LC::X1 << i << Log::end;
   }
   Log::unregisterCurrentTask();
 }
@@ -105,8 +107,10 @@ void atomicLog(size_t n) {
   Log::unregisterCurrentTask();
 }
 
+char gTextToCopy[] = "This_text_will_be_copied_in_messages.";
+
 int main() {
-  std::thread threads[cgThreadCount];
+  std::thread threads[cgThreadCount + 1u]; // let there be zero threads
   
   nowtech::log::LogFormatConfig logConfig;
   LogSenderStdOstream::init(&std::cout);
@@ -120,6 +124,10 @@ int main() {
   int64_t const int64 = -123456789012345;
 
   Log::i(nowtech::LogTopics::surplus) << "message" << Log::end;
+  for(size_t remaining = std::strlen(gTextToCopy); remaining > 0u; --remaining) {
+    gTextToCopy[remaining] = 0;
+    Log::n() << LC::St << gTextToCopy << '#' << Log::end;
+  }
 
   Log::i(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
   Log::n(nowtech::LogTopics::system) << "uint64: " << uint64 << " int64: " << int64 << Log::end;
@@ -152,10 +160,21 @@ int main() {
   Log::i() << "double: " << -1.234567890 << Log::end;
   Log::i() << "float: " << LC::Fm << -123.4567890f << Log::end;
   Log::i() << "double: " << LC::Fm << 123.4567890 << Log::end;
-  Log::i() << "long double: " << -0.01234567890L << Log::end;
-  Log::i() << "long double: " << LC::D16 << 0.01234567890L << Log::end;
+//  Log::i() << "long double: " << -0.01234567890L << Log::end;
+//  Log::i() << "long double: " << LC::D16 << 0.01234567890L << Log::end;
   Log::i() << "bool:" << true << Log::end;
   Log::i() << "bool:" << false << Log::end;
+
+  Log::i<Log::fatal>() << "fatal" << Log::end;
+  Log::i<Log::error>() << "error" << Log::end;
+  Log::i<Log::warn>() << "warning" << Log::end;
+  Log::i<Log::info>() << "info" << Log::end;
+  Log::i<Log::debug>() << "debug" << Log::end;
+  Log::n<Log::fatal>() << "fatal" << Log::end;
+  Log::n<Log::error>() << "error" << Log::end;
+  Log::n<Log::warn>() << "warning" << Log::end;
+  Log::n<Log::info>() << "info" << Log::end;
+  Log::n<Log::debug>() << "debug" << Log::end;
 
   for(size_t i = 0; i < cgThreadCount; ++i) {
     threads[i] = std::thread(delayedLog, i);
@@ -172,6 +191,7 @@ int main() {
     threads[i].join();
   }
   Log::sendAtomicBuffer();
+  Log::n() << Log::end;
 
   Log::unregisterCurrentTask();
   Log::done();

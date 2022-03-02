@@ -10,9 +10,9 @@ namespace nowtech::log {
 template<typename tMessage, bool tArchitecture64, uint8_t tAppendStackBufferSize, bool tAppendBasePrefix, bool tAlignSigned>
 class ConverterCustomText final {
 public:
-  using tMessage_        = tMessage;
-  using ConversionResult = char;
-  using Iterator         = char*;
+  using tMessage_          = tMessage;
+  using ConversionResult   = char;
+  using Iterator           = char*;
   static constexpr Iterator csNullIterator = nullptr; // Used in SenderVoid to return void begin-end pair.
   static constexpr bool     csSupportFloatingPoint = tMessage::csSupportFloatingPoint;
 
@@ -125,7 +125,17 @@ public:
     appendSpace();
   }
 
-  void convert(char const * const aValue, uint8_t const, uint8_t const aFill) noexcept {
+  void convert(char const * const aValue, uint8_t const, uint8_t const) noexcept {
+    append(aValue);
+    appendSpace();
+  }
+
+  void convert(bool const aValue, uint8_t const, uint8_t const) noexcept {
+    append(aValue ? csTrue : csFalse);
+    appendSpace();
+  }
+
+  void convert(char const * const aValue, uint8_t const aFill) noexcept {   // extra function for MessageCompact
     append(aValue);
     if(aFill < LogFormat::csFillValueStoreString) {   // Antipattern to use the fill for other purposes, but we go for space saving.
       appendSpace();
@@ -134,18 +144,8 @@ public:
     }
   }
 
-  void convert(bool const aValue, uint8_t const, uint8_t const) noexcept {
-    append(aValue ? csTrue : csFalse);
-    appendSpace();
-  }
-
   void convert(std::array<char, tMessage::csPayloadSize> const &aValue, uint8_t const, uint8_t const aFill) noexcept {
-    append(aValue.data());
-    if(aFill < LogFormat::csFillValueStoreString) {   // Antipattern to use the fill for other purposes, but we go for space saving.
-      appendSpace();
-    }
-    else { // nothing to do
-    }
+    convert(aValue.data(), aFill);
   }
 
   void terminateSequence() noexcept {

@@ -2,9 +2,11 @@
 #define NOWTECH_LOG
 
 #include "LogMessageBase.h"
+#include "LogAtomicBuffers.h"
 #include "PoolAllocator.h"
 #include <type_traits>
 #include <algorithm>
+#include <string>
 #include <atomic>
 #include <limits>
 #include <array>
@@ -26,11 +28,21 @@ enum class TaskRepresentation : uint8_t {
 
 using LogTopic = int8_t; // this needs to be signed to let the overload resolution work
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod>
+enum class ErrorLevel : uint8_t {
+  Off      = 0u,
+  Fatal    = 1u,
+  Error    = 2u,
+  Warning  = 3u,
+  Info     = 4u,
+  Debug    = 5u,
+  All      = 6u
+};
+
+template<typename tQueue, typename tSender, typename tAtomicBuffer, typename tLogConfig>
 class Log;
 
 class TopicInstance final {
-  template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod>
+  template<typename tQueue, typename tSender, typename tAtomicBuffer, typename tLogConfig>
   friend class Log;
 
 public:
@@ -45,16 +57,27 @@ private:
   }
 
 public:
-  LogTopic operator*() {
+  LogTopic operator*() const {
     return mValue;
   }
 
-  operator LogTopic() {
+  operator LogTopic() const {
     return mValue;
   }
 };
 
-struct LogConfig final {
+template<bool tAllowRegistrationLog, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, int32_t tRefreshPeriod, ErrorLevel tErrorLevel = ErrorLevel::All>
+struct Config final {
+public:
+  static constexpr bool               csAllowRegistrationLog = tAllowRegistrationLog;
+  static constexpr LogTopic           csMaxTopicCount        = tMaxTopicCount;
+  static constexpr TaskRepresentation csTaskRepresentation   = tTaskRepresentation;
+  static constexpr size_t             csDirectBufferSize     = tDirectBufferSize;
+  static constexpr int32_t            csRefreshPeriod        = tRefreshPeriod; // Can represent 1s even if the unit is ns.
+  static constexpr ErrorLevel         csErrorLevel           = tErrorLevel;
+};
+
+struct LogFormatConfig final {
 public:
   /// This is the default logging format and the only one I will document
   /// here. For the others, the letter represents the base of the number
@@ -89,10 +112,6 @@ public:
   // Indicates the next char* value should be stored in messages instead of taking only its address
   inline static constexpr LogFormat St      {13u, LogFormat::csFillValueStoreString };
 
-  /// If true, task registration will be sent to the output in the form
-  /// in the form -=- Registered task: taskname (1) -=-
-  bool allowRegistrationLog = true;
-
   /// Format for displaying the task ID in the message header.
   LogFormat taskIdFormat    = X2;
 
@@ -100,8 +119,9 @@ public:
   /// cInvalid to disable tick output.
   LogFormat tickFormat      = D5;
   LogFormat defaultFormat   = Fm;
+  LogFormat atomicFormat    = Fm;
 
-  LogConfig() noexcept = default;
+  LogFormatConfig() noexcept = default;
 };
 
 /// Dummy type to use in << chain as end marker.
@@ -109,28 +129,41 @@ enum class LogShiftChainEndMarker : uint8_t {
   cEnd      = 0u
 };
 
-template<typename tQueue, typename tSender, LogTopic tMaxTopicCount, TaskRepresentation tTaskRepresentation, size_t tDirectBufferSize, typename tSender::tAppInterface_::LogTime tRefreshPeriod>
+template<typename tQueue, typename tSender, typename tAtomicBuffer, typename tLogConfig>
 class Log final {
 private:
-  static constexpr bool csShutdownLog      = tSender::csVoid;
-  static constexpr bool csSendInBackground = (tDirectBufferSize == 0u); // will omit tQueue
   using tMessage = typename tQueue::tMessage_;
   using tAppInterface = typename tSender::tAppInterface_;
   using tConverter = typename tSender::tConverter_;
   using ConversionResult = typename tConverter::ConversionResult;
   using LogTime = typename tAppInterface::LogTime;
   using TopicName = char const *;
+  using tAtomicBufferType = typename tAtomicBuffer::tAtomicBufferType_;
 
-  static constexpr size_t   csPayloadSizeBr     = tMessage::csPayloadSize;
-  static constexpr size_t   csPayloadSizeNet    = tMessage::csPayloadSize - 1u;  // we leave space for terminal 0 to avoid counting bytes
-  static constexpr size_t   csQueueSize         = tQueue::csQueueSize;
-  static constexpr TaskId   csInvalidTaskId     = tAppInterface::csInvalidTaskId;
-  static constexpr TaskId   csIsrTaskId         = tAppInterface::csIsrTaskId;
-  static constexpr TaskId   csMaxTaskCount      = tAppInterface::csMaxTaskCount;
-  static constexpr TaskId   csMaxTotalTaskCount = tAppInterface::csMaxTaskCount + 1u;
-  static constexpr size_t   csListItemOverhead  = sizeof(void*) * 8u;
-  static constexpr bool     csConstantTaskNames = tAppInterface::csConstantTaskNames;
-  
+  static constexpr size_t   csDirectBufferSize         = tLogConfig::csDirectBufferSize;
+  static constexpr bool     csShutdownLog              = tSender::csVoid;
+  static constexpr bool     csSendInBackground         = (csDirectBufferSize == 0u); // will omit tQueue
+  static constexpr size_t   csAtomicBufferSizeExponent = tAtomicBuffer::csAtomicBufferSizeExponent;
+  static constexpr size_t   csAtomicBufferSize         = tAtomicBuffer::csAtomicBufferSize;
+  static constexpr bool     csAtomicBufferOperational  = tAtomicBuffer::csAtomicBufferSizeExponent > 0u;
+  static constexpr tAtomicBufferType csAtomicBufferInvalidValue = tAtomicBuffer::csInvalidValue;
+  static constexpr size_t   csMaxAtomicBufferSizeExp   = std::max<size_t>(32u, sizeof(void*) * 8u - 1u);
+  static constexpr size_t   csPayloadSizeBr            = tMessage::csPayloadSize;
+  static constexpr size_t   csPayloadSizeNet           = tMessage::csPayloadSize - 1u;  // we leave space for terminal 0 to avoid counting bytes
+  static constexpr int32_t  csRefreshPeriod            = tLogConfig::csRefreshPeriod;
+  static constexpr size_t   csQueueSize                = tQueue::csQueueSize;
+  static constexpr TaskId   csInvalidTaskId            = tAppInterface::csInvalidTaskId;
+  static constexpr TaskId   csIsrTaskId                = tAppInterface::csIsrTaskId;
+  static constexpr TaskId   csMaxTaskCount             = tAppInterface::csMaxTaskCount;
+  static constexpr TaskId   csMaxTotalTaskCount        = tAppInterface::csMaxTaskCount + 1u;
+  static constexpr size_t   csListItemOverhead         = sizeof(void*) * 8u;
+  static constexpr bool     csConstantTaskNames        = tAppInterface::csConstantTaskNames;
+  static constexpr bool     csAllowRegistrationLog     = tLogConfig::csAllowRegistrationLog;
+
+  static constexpr ErrorLevel         csErrorLevel          = tLogConfig::csErrorLevel;
+  static constexpr TaskRepresentation csTaskRepresentation = tLogConfig::csTaskRepresentation;
+
+  static constexpr LogTopic csMaxTopicCount     = tLogConfig::csMaxTopicCount;
   static constexpr LogTopic csFirstFreeTopic    = 0;
   static constexpr MessageSequence csSequence0  = 0u;
   static constexpr MessageSequence csSequence1  = 1u;
@@ -149,14 +182,16 @@ private:
   static_assert(csMaxTaskCount < std::numeric_limits<TaskId>::max());
   static_assert(std::is_same_v<tAppInterface, typename tQueue::tAppInterface_>);
   static_assert(std::is_same_v<tMessage, typename tConverter::tMessage_>);
+  static_assert(std::is_integral_v<tAtomicBufferType>);
+  static_assert(csAtomicBufferSizeExponent <= csMaxAtomicBufferSizeExp);
 
   inline static constexpr char csRegisteredTask[]    = "-=- Registered task:";
   inline static constexpr char csUnregisteredTask[]  = "-=- Unregistered task:";
   
-  inline static LogConfig const                       *sConfig;
+  inline static LogFormatConfig const                 *sConfig;
   inline static std::atomic<LogTopic>                  sNextFreeTopic;
   inline static std::atomic<bool>                      sKeepAliveTask;
-  inline static std::array<TopicName, tMaxTopicCount>  sRegisteredTopics;
+  inline static std::array<TopicName, csMaxTopicCount> sRegisteredTopics;
   inline static TaskShutdownArray                     *sTaskShutdowns;
 
   inline static Occupier           sOccupier;
@@ -167,10 +202,15 @@ private:
 
   /// This will be used to send via queue. It stores the first message, and sends it only with the terminal marker.
   class LogShiftChainHelperBackgroundSend final {
+  private:
+    inline static constexpr char      csEmptyString[] = "";
+    inline static constexpr LogFormat csEmptyFormat {2u, 0u};
+
     TaskId          mTaskId;
     LogFormat       mNextFormat;
     MessageSequence mNextSequence;
     tMessage        mFirstMessage;
+    bool            mWasMessage;
 
   public:
     static constexpr LogShiftChainEndMarker end = LogShiftChainEndMarker::cEnd;
@@ -179,8 +219,9 @@ private:
 
     LogShiftChainHelperBackgroundSend(TaskId const aTaskId) noexcept
      : mTaskId(aTaskId)
-     , mNextSequence(0u) {
-       mNextFormat.invalidate();
+     , mNextSequence(0u)
+     , mWasMessage(false) {
+      mNextFormat.invalidate();
     }
 
     /// Can be used in application code to eliminate further operator<< calls when the topic is disabled.
@@ -209,6 +250,11 @@ private:
       return sendCharPointer(aValue);
     }
 
+    LogShiftChainHelperBackgroundSend& operator<<(std::string const &aValue) noexcept {
+      mNextFormat = LogFormatConfig::St;
+      return sendCharPointer(aValue.c_str());
+    }
+
     LogShiftChainHelperBackgroundSend& operator<<(LogFormat const aFormat) noexcept {
       mNextFormat = aFormat;
       return *this;
@@ -216,6 +262,11 @@ private:
 
     void operator<<(LogShiftChainEndMarker const) noexcept {
       if(mTaskId != csInvalidTaskId) {
+        if(!mWasMessage) {
+          mFirstMessage.set(csEmptyString, csEmptyFormat, mTaskId, csSequence0);
+        }
+        else { // nothing to do
+        }
         tQueue::push(mFirstMessage);
       }
       else { // nothing to do
@@ -271,6 +322,7 @@ private:
 
     void sendOrStore(tMessage const & aMessage) noexcept {
       if(mNextSequence == csSequence0) {
+        mWasMessage = true;
         mFirstMessage = aMessage;
       }
       else {
@@ -309,8 +361,8 @@ private:
         else {
           format = sConfig->defaultFormat;
         }
-        ConversionResult buffer[tDirectBufferSize];
-        tConverter converter(buffer, buffer + tDirectBufferSize);
+        ConversionResult buffer[csDirectBufferSize];
+        tConverter converter(buffer, buffer + csDirectBufferSize);
         converter.convert(aValue, format.mBase, format.mFill);
         tAppInterface::lock();
         tSender::send(buffer, converter.end());
@@ -328,8 +380,8 @@ private:
 
     void operator<<(LogShiftChainEndMarker const) noexcept {
       if(mTaskId != csInvalidTaskId) {
-        ConversionResult buffer[tDirectBufferSize];
-        tConverter converter(buffer, buffer + tDirectBufferSize);
+        ConversionResult buffer[csDirectBufferSize];
+        tConverter converter(buffer, buffer + csDirectBufferSize);
         converter.terminateSequence();
         tAppInterface::lock();
         tSender::send(buffer, converter.end());
@@ -366,15 +418,23 @@ private:
     }
   }; // class LogShiftChainHelperEmpty
 
-  using LogShiftChainHelper = std::conditional_t<csShutdownLog, LogShiftChainHelperEmpty, std::conditional_t<csSendInBackground, LogShiftChainHelperBackgroundSend, LogShiftChainHelperDirectSend>>;
+  using LogShiftChainHelperRaw = std::conditional_t<csSendInBackground, LogShiftChainHelperBackgroundSend, LogShiftChainHelperDirectSend>;
+  using LogShiftChainHelper = std::conditional_t<csShutdownLog, LogShiftChainHelperEmpty, LogShiftChainHelperRaw>;
+  template<ErrorLevel tRequestedErrorLevel>
+  using LogShiftChainHelperErrorLevel = std::conditional_t<(csShutdownLog || csErrorLevel < tRequestedErrorLevel), LogShiftChainHelperEmpty, LogShiftChainHelperRaw>;
 
 public:
   /// Will be used as Log << something << to << log << Log::end;
-  static constexpr LogShiftChainEndMarker end = LogShiftChainEndMarker::cEnd;
+  static constexpr LogShiftChainEndMarker end   = LogShiftChainEndMarker::cEnd;
+  static constexpr ErrorLevel             fatal = ErrorLevel::Fatal;
+  static constexpr ErrorLevel             error = ErrorLevel::Error;
+  static constexpr ErrorLevel             warn  = ErrorLevel::Warning;
+  static constexpr ErrorLevel             info  = ErrorLevel::Info;
+  static constexpr ErrorLevel             debug = ErrorLevel::Debug;
+  static constexpr ErrorLevel             all   = ErrorLevel::All;
 
-  // TODO remark in docs: must come before registering topics
   template<typename ...tTypes>
-  static void init(LogConfig const &aConfig, tTypes... aArgs) {
+  static void init(LogFormatConfig const &aConfig, tTypes... aArgs) {
     if constexpr(!csShutdownLog) {
       sConfig = &aConfig;
       if constexpr(csSendInBackground) {
@@ -394,8 +454,9 @@ public:
         tAppInterface::init();
       }
       tQueue::init();
+      tAtomicBuffer::init();
       sNextFreeTopic = csFirstFreeTopic;
-      std::fill_n(sRegisteredTopics.begin(), tMaxTopicCount, nullptr);
+      std::fill_n(sRegisteredTopics.begin(), csMaxTopicCount, nullptr);
     }
     else { // nothing to do
     }
@@ -418,6 +479,7 @@ public:
       else { // nothing to do
       }
       tQueue::done();
+      tAtomicBuffer::done();
       tSender::done();
       tAppInterface::done();
     }
@@ -448,7 +510,7 @@ public:
         }
         else { // nothing to do
         }
-        if(sConfig->allowRegistrationLog) {
+        if constexpr(csAllowRegistrationLog) {
           n(taskId) << csRegisteredTask << aTaskName << taskId << end;
         }
         else { // nothing to do
@@ -466,8 +528,12 @@ public:
   static void unregisterCurrentTask() noexcept {
     if constexpr(!csShutdownLog) {
       TaskId taskId = tAppInterface::getCurrentTaskId();
-      if(taskId != csInvalidTaskId && sConfig->allowRegistrationLog) {
-        n(taskId) << csUnregisteredTask << taskId << end;
+      if constexpr(csAllowRegistrationLog) {
+        if(taskId != csInvalidTaskId) {
+          n(taskId) << csUnregisteredTask << taskId << end;
+        }
+        else { // nothing to do
+        }
       }
       else { // nothing to do
       }
@@ -490,7 +556,7 @@ public:
   static void registerTopic(TopicInstance &aTopic, char const * const aPrefix) {
     if constexpr(!csShutdownLog) {
       aTopic = sNextFreeTopic++;
-      if(aTopic >= tMaxTopicCount) {
+      if(aTopic >= csMaxTopicCount) {
         tAppInterface::fatalError(Exception::cOutOfTopics);
       }
       else {
@@ -510,33 +576,56 @@ public:
     }
   }
 
-  static LogShiftChainHelper i() noexcept {
-    if constexpr(!csShutdownLog) {
-      TaskId const taskId = tAppInterface::getCurrentTaskId();
-      return sendHeader(taskId);
+  static void pushAtomic(tAtomicBufferType const &aValue) noexcept {
+    if constexpr(!csShutdownLog && csAtomicBufferOperational) {
+      tAtomicBuffer::push(aValue);
     }
-    else {
-      return LogShiftChainHelper{csInvalidTaskId};
+    else { // nothing to do
     }
   }
 
-  static LogShiftChainHelper i(TaskId const aTaskId) noexcept {
-    if constexpr(!csShutdownLog) {
-      return sendHeader(aTaskId);
+  static void sendAtomicBuffer() noexcept {
+    if constexpr(!csShutdownLog && csAtomicBufferOperational) {
+      if constexpr(csSendInBackground) {
+        tAtomicBuffer::scheduleForSend();
+        tAppInterface::atomicBufferSendWait();
+      } else {
+        doSendAtomicBuffer();
+      }
+    }
+    else { // nothing to do
+    }
+  }
+
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::Off>
+  static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> i() noexcept {
+    if constexpr(!csShutdownLog && csErrorLevel >= tRequestedErrorLevel) {
+      TaskId const taskId = tAppInterface::getCurrentTaskId();
+      return sendHeader<LogShiftChainHelperErrorLevel<tRequestedErrorLevel>>(taskId);
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{csInvalidTaskId};
+    }
+  }
+
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::Off>
+  static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> i(TaskId const aTaskId) noexcept {
+    if constexpr(!csShutdownLog && csErrorLevel >= tRequestedErrorLevel) {
+      return sendHeader<LogShiftChainHelperErrorLevel<tRequestedErrorLevel>>(aTaskId);
+    }
+    else {
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{csInvalidTaskId};
     }
   }
 
   static LogShiftChainHelper i(LogTopic const aTopic) noexcept {
     if constexpr(!csShutdownLog) {
-      if(sRegisteredTopics[aTopic] != nullptr) {
+      if(aTopic >= 0 && sRegisteredTopics[aTopic] != nullptr) {
         TaskId const taskId = tAppInterface::getCurrentTaskId();
-        return sendHeader(taskId, sRegisteredTopics[aTopic]);
+        return sendHeader<LogShiftChainHelper>(taskId, sRegisteredTopics[aTopic]);
       }
       else {
-        return sendHeader(csInvalidTaskId);
+        return sendHeader<LogShiftChainHelper>(csInvalidTaskId);
       }
     }
     else {
@@ -546,11 +635,11 @@ public:
 
   static LogShiftChainHelper i(LogTopic const aTopic, TaskId const aTaskId) noexcept {
     if constexpr(!csShutdownLog) {
-      if(sRegisteredTopics[aTopic] != nullptr) {
-        return sendHeader(aTaskId, sRegisteredTopics[aTopic]);
+      if(aTopic >= 0 && sRegisteredTopics[aTopic] != nullptr) {
+        return sendHeader<LogShiftChainHelper>(aTaskId, sRegisteredTopics[aTopic]);
       }
       else {
-        return sendHeader(csInvalidTaskId);
+        return sendHeader<LogShiftChainHelper>(csInvalidTaskId);
       }
     }
     else {
@@ -558,27 +647,29 @@ public:
     }
   }
 
-  static LogShiftChainHelper n() noexcept {
-    if constexpr(!csShutdownLog) {
-      return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::Off>
+  static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> n() noexcept {
+    if constexpr(!csShutdownLog && csErrorLevel >= tRequestedErrorLevel) {
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{tAppInterface::getCurrentTaskId()};
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{csInvalidTaskId};
     }
   }
 
-  static LogShiftChainHelper n(TaskId const aTaskId) noexcept {
-    if constexpr(!csShutdownLog) {
-      return LogShiftChainHelper{aTaskId};
+  template<ErrorLevel tRequestedErrorLevel = ErrorLevel::Off>
+  static LogShiftChainHelperErrorLevel<tRequestedErrorLevel> n(TaskId const aTaskId) noexcept {
+    if constexpr(!csShutdownLog && csErrorLevel >= tRequestedErrorLevel) {
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{aTaskId};
     }
     else {
-      return LogShiftChainHelper{csInvalidTaskId};
+      return LogShiftChainHelperErrorLevel<tRequestedErrorLevel>{csInvalidTaskId};
     }
   }
 
   static LogShiftChainHelper n(LogTopic const aTopic) noexcept {
     if constexpr(!csShutdownLog) {
-      if(sRegisteredTopics[aTopic] != nullptr) {
+      if(aTopic >= 0 && sRegisteredTopics[aTopic] != nullptr) {
         return LogShiftChainHelper{tAppInterface::getCurrentTaskId()};
       }
       else {
@@ -592,7 +683,7 @@ public:
 
   static LogShiftChainHelper n(LogTopic const aTopic, TaskId const aTaskId) noexcept {
     if constexpr(!csShutdownLog) {
-      if(sRegisteredTopics[aTopic] != nullptr) {
+      if(aTopic >= 0 && sRegisteredTopics[aTopic] != nullptr) {
         return LogShiftChainHelper{aTaskId};
       }
       else {
@@ -610,18 +701,19 @@ public:
   }
 
 private:
-  static LogShiftChainHelper sendHeader(TaskId const aTaskId) noexcept {
-    LogShiftChainHelper result{aTaskId};
+  template <typename tLogShiftChainHelper>
+  static tLogShiftChainHelper sendHeader(TaskId const aTaskId) noexcept {
+    tLogShiftChainHelper result{aTaskId};
     if(result.isValid()) {
-      if constexpr(tTaskRepresentation == TaskRepresentation::cId) {
+      if constexpr(csTaskRepresentation == TaskRepresentation::cId) {
         result << sConfig->taskIdFormat << aTaskId;
       }
-      else if constexpr (tTaskRepresentation == TaskRepresentation::cName) {
-        if constexpr (csConstantTaskNames) {
+      else if constexpr (csTaskRepresentation == TaskRepresentation::cName) {
+        if constexpr (csConstantTaskNames || !csSendInBackground) {
           result << tAppInterface::getTaskName(aTaskId);
         }
         else {
-          result << LogConfig::St << tAppInterface::getTaskName(aTaskId);
+          result << LogFormatConfig::St << tAppInterface::getTaskName(aTaskId);
         }
       }
       else { // nothing to do
@@ -637,8 +729,9 @@ private:
     return result;
   }
 
-  static LogShiftChainHelper sendHeader(TaskId const aTaskId, char const * aTopicName) noexcept {
-    LogShiftChainHelper result = sendHeader(aTaskId);
+  template <typename tLogShiftChainHelper>
+  static tLogShiftChainHelper sendHeader(TaskId const aTaskId, char const * aTopicName) noexcept {
+    tLogShiftChainHelper result = sendHeader<tLogShiftChainHelper>(aTaskId);
     if(result.isValid() && aTopicName != nullptr) {
       result << aTopicName;
     }
@@ -650,21 +743,27 @@ private:
   static void transmitterTaskFunction() noexcept {
     while(sKeepAliveTask || !tQueue::empty()) {
       tMessage message;
-      if(tQueue::pop(message, tRefreshPeriod)) {
+      if(tQueue::pop(message, csRefreshPeriod)) {
         TaskId taskId = message.getTaskId();
-        if constexpr(csSendInBackground) {
-          if (message.isShutdown()) {
-            (*sTaskShutdowns)[taskId] = true;
-          }
-          else {
-            checkAndInsertAndTransmit(taskId, message);
-          }
+        if (message.isShutdown()) {
+          (*sTaskShutdowns)[taskId] = true;
         }
         else {
           checkAndInsertAndTransmit(taskId, message);
         }
       }
-      else { // nothing to do
+      else {
+        if constexpr(csAtomicBufferOperational) {
+          if(tAtomicBuffer::isScheduledForSent()) {
+            doSendAtomicBuffer();
+            tAppInterface::atomicBufferSendFinished();
+            tAtomicBuffer::sendFinished();
+          }
+          else { // nothing to do
+          }
+        }
+        else { // nothing to do
+        }
       }
     }
     tAppInterface::finish();
@@ -720,10 +819,37 @@ private:
     converter.terminateSequence();
     tSender::send(begin, converter.end());
   }
+
+  static void doSendAtomicBuffer() noexcept {
+    auto [inBuffer, inIndex] = tAtomicBuffer::getBuffer();
+    auto [outBegin, outEnd] = tSender::getBuffer();
+    size_t processed = 0u;
+    while(processed < csAtomicBufferSize) {
+      tConverter converter(outBegin, outEnd);
+      auto validOutEnd = converter.end();
+      while((converter.end() != outEnd) && (processed < csAtomicBufferSize)) {
+        if(inBuffer[inIndex] != csAtomicBufferInvalidValue) {
+          converter.convert(inBuffer[inIndex], sConfig->atomicFormat.mBase, sConfig->atomicFormat.mFill);
+          if (converter.end() != outEnd) {
+            validOutEnd = converter.end();
+          } else { // nothing to do
+          }
+        }
+        else { // nothing to do
+        }
+        inIndex = (inIndex + 1u) % csAtomicBufferSize;
+        ++processed;
+      }
+      tSender::send(outBegin, validOutEnd);
+    }
+    tConverter converter(outBegin, outEnd);
+    converter.terminateSequence();
+    tSender::send(outBegin, converter.end());
+  }
 };
 
 }
 
-using LC = nowtech::log::LogConfig;
+using LC = nowtech::log::LogFormatConfig;
 
 #endif

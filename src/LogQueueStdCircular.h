@@ -1,15 +1,15 @@
 #ifndef LOG_QUEUE_STD_BOOST
 #define LOG_QUEUE_STD_BOOST
 
+#include <array>
 #include <cstddef>
 #include <mutex>
 #include <condition_variable>
-#include <boost/lockfree/queue.hpp>
 
 namespace nowtech::log {
 
 template<typename tMessage, typename tAppInterface, size_t tQueueSize>
-class QueueStdBoost final {
+class QueueStdCircular final {
 public:
   using tMessage_ = tMessage;
   using tAppInterface_ = tAppInterface;
@@ -19,28 +19,38 @@ public:
 
 private:
   class FreeRtosQueue final {
-    boost::lockfree::queue<tMessage, boost::lockfree::capacity<tQueueSize>> mQueue;
+    std::array<tMessage, tQueueSize> mQueue;
+    size_t                           mNextWrite;
+    size_t                           mNextRead;
+    std::atomic<size_t>              mOccupied;
     std::atomic<bool>                mNotified;
-    std::mutex                       mMutex;
-    std::unique_lock<std::mutex>     mLock;
+    std::mutex                       mMutexPush;
+    std::mutex                       mMutexCv;
+    std::unique_lock<std::mutex>     mLockCv;
     std::condition_variable          mConditionVariable;
 
   public:
     /// First implementation, we assume we have plenty of memory.
     FreeRtosQueue() noexcept
-      : mLock(mMutex) {
+      : mNextWrite(0u)
+      , mNextRead(0u)
+      , mOccupied(0u)
+      , mLockCv(mMutexCv) {
       mNotified = false;
     }
 
     ~FreeRtosQueue() noexcept = default;
 
     bool empty() const noexcept {
-      return mQueue.empty();
+      return mOccupied == 0u;
     }
 
     void push(tMessage const &aMessage) noexcept {
-      bool success = mQueue.bounded_push(aMessage);
-      if(success) {
+      std::lock_guard<std::mutex> lock(mMutexPush);
+      if(mOccupied < tQueueSize) {
+        mQueue[mNextWrite] = aMessage;
+        mNextWrite = (mNextWrite + 1u) % tQueueSize;
+        ++mOccupied;        
         mNotified = true;         // Having no lock_guard here makes tremendous speedup.
         mConditionVariable.notify_one();
       }
@@ -51,15 +61,18 @@ private:
     bool pop(tMessage &aMessage, LogTime const mPauseLength) noexcept {
       bool result;
       // Safe to call empty because there will be only one consumer.
-      if(mQueue.empty() &&
-        (!mConditionVariable.wait_for(mLock, std::chrono::milliseconds(mPauseLength), [this]{return mNotified == true;})
+      if(mOccupied == 0u &&
+        (!mConditionVariable.wait_for(mLockCv, std::chrono::milliseconds(mPauseLength), [this]{return mNotified == true;})
         && !mNotified )) {  // This check makes the lock_guard on notifying unnecessary,
         // because I don't care if I get in right during waiting or just at the beginning of next check.
         result = false;
       }
       else {
         mNotified = false;
-        result = mQueue.pop(aMessage);
+        aMessage = mQueue[mNextRead];
+        mNextRead = (mNextRead + 1u) % tQueueSize;
+        --mOccupied;
+        result = true;
       }
       return result;
     }
@@ -67,7 +80,7 @@ private:
 
   inline static FreeRtosQueue sQueue;
 
-  QueueStdBoost() = delete;
+  QueueStdCircular() = delete;
 
 public:
   static void init() { // nothing to do
